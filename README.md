@@ -5,21 +5,13 @@ server round-trips, no cloud VMs, no fake terminal.
 
 Nodine boots a **Rust/WASM microkernel** in a Web Worker, runs **genuine
 upstream Node.js v26.13.0** (vendored lib sources booted verbatim on the
-browser's own JS engine, one process per Web Worker), seeds a complete
-`/usr` tree with a **working `npm`**, and exposes it all through a small
-typed API: mount files, spawn processes, read their output, and watch dev
-servers come up on same-origin preview URLs.
+browser's own JS engine, one process per Web Worker), ships a complete
+`/usr` tree with a **working `npm`**, and exposes it through a small typed
+API: mount files, spawn processes, read their output, and watch dev servers
+come up on same-origin preview URLs.
 
-Everything — the filesystem, the processes, `npm install`, the dev servers —
-executes **locally in the user's browser**. The package never calls a
-Nodine server for runtime operations.
-
-> One package. This repo used to split a private "core" and a public
-> `@nodine/api` SDK (the SDK loaded the core from a distribution service
-> that never shipped). That split is gone: `npm install nodine` gives you
-> the API SDK *and* the full runtime bundle, and nothing else is needed.
-> The same-origin preview gateway is the only outbound surface — there is
-> **no remote tunneling** (and no Cloudflare tunnel gateway).
+Everything — the filesystem, processes, `npm install`, dev servers — runs
+**locally in the user's browser**.
 
 ## Install
 
@@ -27,37 +19,25 @@ Nodine server for runtime operations.
 npm install nodine
 ```
 
-## Quickstart
+## Quickstart (Vite)
 
-**1. Stage the runtime bundle** into your static file tree (it must be
-served by your own server, same origin as your page):
+Add the plugin to your `vite.config.js`:
 
-```sh
-npx nodine-stage public/nodine
+```js
+import { defineConfig } from 'vite';
+import { nodine } from 'nodine/vite';
+
+export default defineConfig({
+  plugins: [nodine()],
+});
 ```
 
-(or `npx nodine-stage --root public` to serve it at the origin root — the
-recommended layout, see [Previews](#previews))
-
-**2. Serve cross-origin-isolation headers.** Nodine needs
-`SharedArrayBuffer` + WASM threads, so your server must send on every
-response of the embedding origin:
-
-```
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: credentialless    (or require-corp)
-```
-
-**3. Boot it:**
+Boot it in your app:
 
 ```ts
 import { Container } from 'nodine';
 
-const container = await Container.boot({
-  runtimeUrl: '/nodine/supervisor.mjs',
-  coep: 'credentialless',
-  workdirName: 'project',
-});
+const container = await Container.boot();
 
 // mount files
 await container.mount({
@@ -72,20 +52,60 @@ await proc.exit;
 
 // npm works — in the browser
 const install = await container.spawn('npm', ['install', 'left-pad']);
-install.output.pipeTo(new WritableStream({ write: (d) => process.stdout.write(d) }));
+install.output.pipeTo(new WritableStream({ write: (d) => console.log(d) }));
 await install.exit;
 ```
 
-For a runnable end-to-end example (terminal UI, file writes, process
-spawning, preview server, `npm install`), see [`examples/demo/`](examples/demo)
-— one HTML file plus a tiny dev server that sends the required headers.
+That's it. The plugin takes care of everything the runtime needs on your
+dev server:
+
+- **Cross-origin isolation headers** (COOP/COEP) on every response —
+  required for SharedArrayBuffer + WASM threads.
+- **Serving the runtime bundle** from `node_modules/nodine/runtime` at
+  `/nodine/…` with the right MIME types and a
+  `Service-Worker-Allowed: /` header so previews work.
+- **`vite build` copies the runtime bundle** into your build output
+  (`dist/nodine/…`) so production deploys are complete.
+
+For a runnable end-to-end example (terminal-style UI, file writes,
+processes, preview server, `npm install`), see
+[`examples/demo/`](examples/demo) — one HTML file plus a tiny dev server.
+
+## Quickstart (any other setup)
+
+The runtime bundle is a static directory. Two things must be true for it to
+boot, no matter what serves it:
+
+1. Your page's origin sends the isolation headers (a browser requirement —
+   SharedArrayBuffer is gated on them):
+   ```
+   Cross-Origin-Opener-Policy: same-origin
+   Cross-Origin-Embedder-Policy: credentialless    (or require-corp)
+   ```
+2. The bundle is reachable at a URL you pass as `runtimeUrl`.
+
+The easiest way is the bundled stager:
+
+```sh
+npx nodine-stage public/nodine
+```
+
+```ts
+const container = await Container.boot(); // default runtimeUrl: /nodine/supervisor.mjs
+```
+
+Any other location works too — just say where:
+
+```ts
+const container = await Container.boot({ runtimeUrl: '/runtime/supervisor.mjs' });
+```
 
 ## The API
 
 ### `Container`
 
 - `Container.boot(options?): Promise<Container>` — boot the runtime.
-  Requires `runtimeUrl`. Single instance; `teardown()` to release.
+  Single instance per page; `teardown()` to release.
 - `container.fs: FileSystemAPI` — `mkdir`, `readdir`, `readFile`,
   `writeFile`, `rename`, `rm`, `watch` (modeled on Node's `fs.promises`).
 - `container.mount(tree: FileSystemTree)` — mount files, directories and
@@ -107,8 +127,8 @@ spawning, preview server, `npm install`), see [`examples/demo/`](examples/demo)
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `runtimeUrl` | — (required) | URL of the staged bundle's `supervisor.mjs`. The runtime resolves **all** of its assets relative to this module, so the bundle works from any directory. |
-| `coep` | — (any but `'none'`) | Which COEP value your host serves — `'credentialless'` or `'require-corp'` (isolation is verified directly either way); `'none'` is rejected: there is no non-isolated fallback. |
+| `runtimeUrl` | `'/nodine/supervisor.mjs'` | Where `supervisor.mjs` is served. The default matches the Vite plugin and `nodine-stage public/nodine`. The runtime resolves all its assets relative to this module, so any location works. |
+| `coep` | — (any but `'none'`) | `'credentialless'` or `'require-corp'`; `'none'` is rejected — there is no non-isolated fallback. |
 | `workdirName` | `'project'` | Name of the working directory (`/home/user/<name>`). |
 | `enablePreview` | `true` | Register the preview service worker (see below). `false` → dev servers "dark-listen": they boot and print their banners, but preview URLs are unavailable. |
 | `seedLibSources` | `true` | Seed the vendored Node lib sources + npm tree. `false` boots a bare kernel. |
@@ -125,44 +145,44 @@ receives only bytes produced by that process's own tree. A child with
 
 ## Previews
 
-With `enablePreview` (the default), the SDK registers
-`sw-opencontainer.js` — a **same-origin service worker** — and bridges
-every `http.Server.listen()` inside the runtime onto it. Dev servers
-(Vite, Metro/expo, webpack-serve, `http.createServer`) get real previews at:
+With `enablePreview` (the default), the SDK registers a **same-origin
+service worker** and bridges every `http.Server.listen()` inside the runtime
+onto it. Dev servers (Vite, Metro/expo, webpack-serve,
+`http.createServer`) get real preview URLs at:
 
 ```
 /preview/<session-id>/<port>/<path>
 ```
 
 - `server-ready` / `port` events fire with the preview URL.
-- There is **no WebSocket pass-through** (WS bypasses service workers) and
-  no remote tunneling: previews are reachable from the host origin only.
-- The service worker registers with scope `/`. Serve the bundle at the
-  origin root (`npx nodine-stage --root public`), or send
-  `Service-Worker-Allowed: /` on `sw-opencontainer.js` when staging it in a
-  subdirectory. Without it, boot still works — previews just never fire.
-- Secure context (https or localhost) required for service workers.
+- Previews are reachable from your origin only; WebSocket upgrades are not
+  passed through (service workers cannot intercept WebSocket traffic).
+- Service workers need a secure context (https or localhost). When
+  registration fails, the container still boots — dev servers keep working
+  (banner + interactive mode), preview events just never fire.
+- The service worker registers with scope `/`, so the bundle can live in
+  any directory as long as the server sends
+  `Service-Worker-Allowed: /` on `sw-opencontainer.js` (the Vite plugin
+  does). Or serve the bundle at the origin root — then no extra header is
+  needed anywhere.
 
 **Cache-busting:** runtime modules are cached by the browser. On every
-re-stage, fetch the fresh stamp and append it, so users never boot a
-stale runtime:
+re-stage, fetch the fresh stamp and append it, so users never boot a stale
+runtime:
 
 ```ts
 const v = await (await fetch('/nodine/runtime-version.txt', { cache: 'no-store' })).text();
-const container = await Container.boot({
-  runtimeUrl: `/nodine/supervisor.mjs?v=${v.trim()}`,
-  coep: 'credentialless',
-});
+const container = await Container.boot({ runtimeUrl: `/nodine/supervisor.mjs?v=${v.trim()}` });
 ```
 
 ## Networking inside the container
 
-`fetch`/HTTP from spawned processes goes through a fetch-bridged network
-stack. The default mode is `direct`: allowlisted anonymous HTTPS GET/HEAD
-requests (npm registry and friends) go straight from the browser to the
-registry — **no server-side relay needed**. Hosts that want to proxy
-egress can set `env: { CARAPACE_NETWORK_MODE: 'proxy' }` and serve a
-same-origin `/egress` relay.
+HTTP from spawned processes goes through a fetch-bridged network stack.
+The default mode is `direct`: allowlisted anonymous HTTPS GET/HEAD requests
+(npm registry and friends) go straight from the browser to the registry —
+no server-side relay needed. Hosts that want to proxy egress can set
+`env: { CARAPACE_NETWORK_MODE: 'proxy' }` and serve a same-origin `/egress`
+relay.
 
 Known limits, stated plainly:
 
@@ -175,18 +195,29 @@ Known limits, stated plainly:
   WASM threads). `Container.boot()` fails loudly with
   `EnvironmentUnsupportedError` listing exactly what is missing.
 
-## Requirements for embedding apps
+## Deploying to production
 
-- Serve the staged `runtime/` bundle from the **same origin** as your page.
-- COOP `same-origin` + COEP (`credentialless` or `require-corp`) on every
-  response of the page.
-- Node.js >= 18 for the build/publish toolchain (`engines` field).
+`vite build` already puts the runtime bundle in `dist/nodine/`. The only
+thing a static host adds is the two isolation headers — a hard browser
+requirement for SharedArrayBuffer, not a Nodine policy:
+
+| Host | Config |
+| --- | --- |
+| nginx | `add_header Cross-Origin-Opener-Policy same-origin; add_header Cross-Origin-Embedder-Policy credentialless;` in the server/location block |
+| Vercel | `vercel.json`: `{"headers":[{"source":"/(.*)","headers":[{"key":"Cross-Origin-Opener-Policy","value":"same-origin"},{"key":"Cross-Origin-Embedder-Policy","value":"credentialless"}]}]}` |
+| Netlify | `netlify.toml`: `[[headers]]` `for = "/*"` then `Cross-Origin-Opener-Policy = "same-origin"`, `Cross-Origin-Embedder-Policy = "credentialless"` |
+| Express | `app.use((req, res, next) => { res.setHeader('Cross-Origin-Opener-Policy', 'same-origin'); res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless'); next(); })` |
+| Node (dev) | `node examples/demo/server.mjs` — sends the right headers and serves the bundle |
+
+If the bundle is served outside the origin root (for example
+`/nodine/…`), also add `Service-Worker-Allowed: /` for
+`sw-opencontainer.js` (or serve the bundle at the root and skip this).
 
 ## Repository layout
 
 ```
-├── src/            TypeScript API SDK (compiles to dist/)
-├── runtime/        the static runtime bundle — stage it, serve it
+├── src/            TypeScript API SDK + the Vite plugin (compiles to dist/)
+├── runtime/        the static runtime bundle — served by the plugin or stage it
 │   ├── supervisor.mjs        page-side process supervisor
 │   ├── runtime-worker.mjs    Node.js execution worker (one per process)
 │   ├── kernel-driver.js     kernel bootstrapping worker
@@ -195,22 +226,20 @@ Known limits, stated plainly:
 │   ├── libsources.json       vendored Node v26.13.0 lib sources (derived)
 │   ├── npm-seed-blob         /usr tree seed: npm, /bin/sh, coreutils (derived)
 │   └── unpkg/                pako / @noble/hashes / js-md5 ESM (derived)
-├── kernel/         Rust source of the microkernel (kernel-abi, kernel-core,
-│                   kernel-vfs) + the frozen ABI spec (kernel/KERNEL_ABI.md)
-│                   — builds kernel_core.wasm (gate: scripts/check-wasm-layout.sh)
+├── kernel/         Rust source of the microkernel + the frozen ABI spec
 ├── vendor/         upstream inputs (Node lib sources, dep tarballs, shims —
 │                   see vendor/README.md)
-├── scripts/        build-runtime.mjs (regenerates the derived artifacts),
-│                   stage-runtime.mjs (nodine-stage), shell patches
-├── test/           node --test contracts + adapter tests
+├── scripts/        build-runtime.mjs, stage-runtime.mjs (nodine-stage),
+│                   smoke-install.cjs, smoke-vite.cjs
+├── test/           node --test contracts + adapter tests; browser E2E
 ├── examples/demo/  runnable end-to-end demo page + COI dev server
-└── docs/           architecture notes + the frozen runtime-worker contract
+└── docs/           architecture + per-subsystem deep dives
 ```
 
 The derived artifacts (marked above) are **committed**, so a fresh clone is
 always publish-ready. `npm run build:runtime` regenerates them from
-`vendor/` (network access needed for the `/bin/sh` dependency closure);
-the build is deterministic for the same inputs.
+`vendor/` (deterministic; one network npm install of pinned versions for
+the `/bin/sh` dependency closure).
 
 ## Development
 
@@ -225,13 +254,14 @@ Browser-level verification (requires `playwright` with its `chromium`
 browser installed):
 
 ```sh
-npm run test:e2e  # 16-check SDK E2E: boot, fs, spawn, preview, teardown
-npm run smoke     # npm pack -> install into a fresh project -> boot it
+npm run test:e2e     # 16-check SDK E2E: boot, fs, spawn, preview, teardown
+npm run smoke        # npm pack -> install into a fresh project -> boot it
+npm run smoke:vite   # install -> vite plugin line -> boot, with zero options
 ```
 
 The kernel: `kernel/` is a Cargo workspace building
-`runtime/kernel_core.wasm` for `wasm32-unknown-unknown` with the frozen
-ABI v1.0.2 transport (see `docs/runtime-worker-contract.md` for the wire
+`runtime/kernel_core.wasm` for `wasm32-unknown-unknown` with the frozen ABI
+v1.0.2 transport (see `docs/runtime-worker-contract.md` for the wire
 protocol between supervisor, workers and kernel).
 
 ## License

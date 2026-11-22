@@ -8,7 +8,7 @@
  * @module
  */
 
-export { Container, SDK_VERSION } from './container.js';
+export { Container, SDK_VERSION, DEFAULT_RUNTIME_URL } from './container.js';
 
 export {
   BootFailedError,

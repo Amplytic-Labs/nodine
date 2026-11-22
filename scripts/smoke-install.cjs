@@ -18,10 +18,11 @@ const PORT = 8910;
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'nodine-smoke-'));
   console.log('[smoke] scratch:', scratch);
 
-  // 1. pack
+  // 1. pack (name-version derived from package.json — no hardcoded filenames)
   execFileSync('npm', ['pack', '--silent'], { cwd: ROOT, stdio: 'pipe' });
-  const tgz = path.join(ROOT, 'nodine-0.3.0.tgz');
-  if (!fs.existsSync(tgz)) throw new Error('pack did not produce nodine-0.3.0.tgz');
+  const { name: pkgName, version: pkgVersion } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const tgz = path.join(ROOT, `${pkgName}-${pkgVersion}.tgz`);
+  if (!fs.existsSync(tgz)) throw new Error(`pack did not produce ${pkgName}-${pkgVersion}.tgz`);
   console.log('[smoke] packed:', fs.statSync(tgz).size, 'bytes');
 
   // 2. fresh consumer project + install

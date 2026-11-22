@@ -1,6 +1,6 @@
 {
   "name": "nodine",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Nodine — a browser-based Node.js runtime. One package: the public API SDK plus the full runtime bundle (Rust/WASM kernel, genuine upstream Node.js v26.13.0, in-browser npm) that runs entirely in the user's browser tab.",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -11,6 +11,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "default": "./dist/vite.js"
     },
     "./package.json": "./package.json"
   },
@@ -63,9 +67,11 @@
     "test:types": "tsc -p tsconfig.test.json --noEmit || node scripts/check-types-fallback.cjs",
     "check": "npm run build && npm run build:runtime && npm pack --dry-run",
     "smoke": "node scripts/smoke-install.cjs",
+    "smoke:vite": "node scripts/smoke-vite.cjs",
     "prepack": "npm run build"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
   }
 }

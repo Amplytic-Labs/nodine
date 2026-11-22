@@ -1,24 +1,22 @@
-# P2-006-007 — Browser Terminal + Process Supervisor (Agent C)
+# The runtime-worker wire contract (FROZEN)
 
-`poc/p2-007/` — the terminal page, the process supervisor, the supervisor-side
-fs lane, the npm seeding pipeline and the host server. The runtime worker
-(`public/runtime-worker.mjs`) is the **main agent's deliverable**; everything
-here codes to the frozen contract below.
+This is the frozen message protocol between the page-side supervisor
+(`runtime/supervisor.mjs`), the kernel driver (`runtime/kernel-driver.js`)
+and every process worker (`runtime/runtime-worker.mjs`). The supervisor's
+error messages point here by section; sections 1.2–1.4 are the part a worker
+implementation must match exactly. The kernel-side ABI (transport layout,
+op numbers, doorbells) is specified in [`kernel/KERNEL_ABI.md`](../kernel/KERNEL_ABI.md).
 
-## Files
+## Where the pieces live
 
 | file | role |
 |---|---|
-| `server.cjs` | COI static server + `/libsources.json` (verbatim Node v26.13.0 lib/) + one-time tarball unpack into `.cache/` with SHORT names (`npm/`, `pako/`, `noble/`, `shell/`; stamp-checked; gitignored via `poc/p2-007/.gitignore`) + `/npm-manifest.json` + `/npm-file?p=` + `/vendor/*` + `/unpkg/*`. Port 8897. |
-| `public/terminal.html` | The page: 80×30 ANSI terminal, status bar (state · cwd · process count · `↳ N`), minimal line editor (NOT a shell), key routing, builtins, boot sequence, `window.__p2007`. |
-| `public/supervisor.mjs` | `Term` (ANSI emulator), `parseCommandLine`, `Supervisor` (driver RPCs, kfs sync ops, seeding, exec resolution, process tree, relay, signals, shutdown). |
-| `public/kernel-driver.js` | **Copy of p2-006's driver + two new RPCs** (`kfs-sync`, `stdin-feed`). Every p2-006 RPC is untouched. |
-| `public/kernel_core.wasm` | Byte-identical copy of p2-006's released wasm (sha256 `2b514dd5dd92bbe9e737747e63719a874471eaff49044360a1c2aca63bd62ce3`). |
-| `seed-bench.cjs` | Kernel-side seeding measurement (direct wasm, no RPC layer). |
-| `supervisor-test.mjs` | 60-check integration test: REAL supervisor.mjs + REAL kernel-driver.js (vm-hosted) + scripted dummy runtime worker. |
-
-Run: `node poc/p2-007/server.cjs` → `http://127.0.0.1:8897/`.
-Test: `node poc/p2-007/supervisor-test.mjs` (needs the server running).
+| `runtime/supervisor.mjs` | `Term` (ANSI emulator), `parseCommandLine`, `Supervisor` (driver RPCs, kfs sync ops, seeding, exec resolution, process tree, relay, signals, shutdown). |
+| `runtime/kernel-driver.js` | Kernel bootstrap worker: `boot`, `alloc-endpoint`, `endpoint-exit`/`endpoint-died`, `shutdown`, `set-step-mode`/`step`, `set-watchdog`, `diag`, plus the supervisor-lane RPCs `kfs-sync` and `stdin-feed`. |
+| `runtime/kernel_core.wasm` | The kernel binary (Rust, wasm32-unknown-unknown; sha256 `2b514dd5dd92bbe9e737747e63719a874471eaff49044360a1c2aca63bd62ce3`). |
+| `runtime/runtime-worker.mjs` | The process worker: boots the vendored Node.js lib sources, bridges `process`/syscalls onto the kernel endpoint, implements this contract. |
+| `examples/demo/server.mjs` | Minimal COI static server for the demo page (`node examples/demo/server.mjs`). |
+| `test/e2e.cjs` | Browser E2E against the real runtime (boot, fs, spawn, preview, teardown). |
 
 ---
 
@@ -218,60 +216,21 @@ Base env for children: `HOME=/home/user`, `PATH=/usr/bin:/bin`,
 `npm_config_loglevel=info`, `TERM=xterm-256color`, `LANG=en_US.UTF-8`,
 `SHELL=/bin/sh`. **NO `CI` var** (deliberate — interactive terminal).
 
-## 4. Measurements (this machine, real vendored tarballs)
+## 4. Known limitations (honest)
 
-- **manifest** (server log): 2244 entries — npm 1943, shell 15, pako 33,
-  noble 247 files + 3 symlinks + 1 dir; 15,304,170 B (14.60 MB); manifest
-  built in 19–28 ms; tarball unpack 110 ms cold / 0 ms stamped.
-- **`seed-bench.cjs`** (direct wasm, exact supervisor op sequence):
-  **2244 entries / 2240 files / 15.3 MB / 8441 sync ops → 51 ms** kernel-side;
-  KSM 113.7 MiB after seeding; exec-resolution op sequence (PATH stat →
-  lstat → readlink → stat resolved → open+read first 128 B) 0.24 ms;
-  `npm-cli.js` mode `0o755` after umask compensation; first line
-  `#!/usr/bin/env node`.
-- **`supervisor-test.mjs`** (real supervisor.mjs + real kernel-driver.js code,
-  same-thread RPC shim + real HTTP fetches): **boot 41–45 ms, seed 857–950 ms
-  wall-clock** (fetch-bound: 2238 `/npm-file` requests ≈ 6.8–7.5 s of summed
-  fetch time overlapped 8-wide; kernel-side 51 ms runs under the prefetch
-  shadow). **60/60 checks pass** (tokenizer/metachars, boot, seeding, exec
-  rules incl. 126/127, spawn-result/child-exit relay, pipe stdio relay,
-  SIGINT tree, OFD-live back to 3 after reclaims, stdin-feed EAGAIN→feed→drain).
-- **headless Chromium page smoke** (real page, COI on): `crossOriginIsolated:
-  true`, boot 34 ms, **seed 2240 files (14.6 MB) in 6.3 s** (HTTP/1.1 — 6
-  connections × 2238 small files dominates; see limitations), `cd`/assignment/
-  metachar builtins verified, `node /project/main.js` → honest
-  `[worker error] load failed` + README hint + `↳ 1` + prompt back, zero page
-  errors.
-
-## 5. Known limitations (honest)
-
-- **No runtime worker yet** — `public/runtime-worker.mjs` is the main agent's
-  deliverable; the page prints a clear error + contract pointer until it
-  exists. Everything else is integration-tested with a scripted dummy worker.
-- Minimal terminal, NOT a shell: no pipes/redirects/`&&`/`;`, no var
-  expansion, no globbing, no completion, no job control beyond the single
-  foreground tree.
 - `Ctrl+D` cannot deliver real EOF: the kernel stdin FIFO has no EOF marker
   (bounded-drop device). It is a no-op on an empty line (logged) and
-  delete-forward elsewhere. A real EOF needs a kernel-side flag (future work).
+  delete-forward elsewhere.
 - ANSI: `ESC[G`/`ESC[H`/CUP and bg colors are stripped — progress bars that
   rely on absolute cursor addressing (rather than `\r`/`ESC[K`) show artifacts.
 - Per-fd stdio granularity for worker-spawned children is coarse (see 1.4).
-- `/bin/sh` requires the vendored `@yarnpkg/shell` — its tarball has UNBUNDLED
-  deps (`tslib`, `@yarnpkg/fslib`, `@yarnpkg/parsers`, `chalk`, …), so a
-  self-contained shell (bundling or shims) is the main agent's follow-up.
 - `argv[1]` is the resolved symlink path (see §2 deviation).
 - Keystrokes while scrolled-back: any key jumps to the bottom first.
 - The line editor renders the prompt through the emulator grid; lines longer
   than 80 cols wrap (editor cursor math is column-based).
-- Seeding fetches each file individually (`/npm-file?p=`); ~2240 requests on
-  first boot → ~6.3 s in Chromium (HTTP/1.1 connection cap). Mitigations for
-  later: HTTP/2 multiplexing, or one tarball + browser-side untar (the kernel
-  side is only 51 ms — the wire is the bottleneck).
-- Re-seeding happens on every page reload (no persistence channel yet —
-  ADR-0009 future work).
+- Seeding happens on every page reload (no persistence channel yet).
 
-## 6. `window.__p2007` (E2E hooks)
+## 5. `window.__p2007` (E2E hooks)
 
 `{bootMs, seedMs, seedFetchMs, procs: Map, logs: [], pageErrors: [],
 manifest: {files, bytes} | null, lastExit: number | null, stopped: boolean,

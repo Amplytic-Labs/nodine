@@ -15,10 +15,11 @@ export interface BootOptions {
   workdirName?: string;
 
   /**
-   * URL of the `supervisor.mjs` module of the Nodine runtime bundle, e.g.
-   * `new URL('/nodine/supervisor.mjs', document.baseURI)`. The bundle is the
-   * `runtime/` directory of the `nodine` package, copied into the host's
-   * static file tree (see `npx nodine-stage` in the package README).
+   * URL of the `supervisor.mjs` module of the Nodine runtime bundle.
+   * OPTIONAL: when omitted, the SDK boots from
+   * {@link DEFAULT_RUNTIME_URL} (`/nodine/supervisor.mjs`) — the path the
+   * official Vite plugin (`nodine/vite`) serves the bundle at, and the
+   * location `npx nodine-stage public/nodine` stages it to.
    *
    * @remarks
    * The runtime resolves ALL of its assets (workers, `kernel_core.wasm`,

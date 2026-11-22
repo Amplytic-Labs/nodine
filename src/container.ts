@@ -46,6 +46,14 @@ import { createFileSystem } from './fs-adapter.js';
 
 type Unsubscribe = () => void;
 
+/**
+ * The default {@link BootOptions.runtimeUrl}: the URL the official Vite
+ * plugin (`nodine/vite`) serves the runtime bundle at, and the location
+ * `npx nodine-stage public/nodine` stages it to. Booting without options
+ * uses this path.
+ */
+export const DEFAULT_RUNTIME_URL = '/nodine/supervisor.mjs';
+
 interface EventHandlers {
   'server-ready': Set<ServerReadyListener>;
   port: Set<PortListener>;
@@ -76,12 +84,13 @@ export class Container {
   /**
    * Boots a Nodine runtime instance.
    *
-   * @param options - Boot configuration. `runtimeUrl` MUST point at the
-   * `supervisor.mjs` module of the Nodine runtime bundle (the `runtime/`
-   * directory of this package, copied somewhere your static server serves).
-   * The runtime resolves all of its assets relative to that URL, so it can
-   * live in any directory — but for preview service-worker registration the
-   * bundle should sit at the origin root, or the server must send a
+   * @param options - Boot configuration. `runtimeUrl` optionally points at
+   * the `supervisor.mjs` module of the Nodine runtime bundle; when omitted,
+   * {@link DEFAULT_RUNTIME_URL} is used — the URL the official Vite plugin
+   * (`nodine/vite`) and `npx nodine-stage` serve. The runtime resolves all
+   * of its assets relative to that URL, so the bundle can live in any
+   * directory the host serves; for preview service-worker registration it
+   * should sit at the origin root, or the server must send a
    * `Service-Worker-Allowed: /` header for `sw-opencontainer.js` (see the
    * README).
    *
@@ -106,14 +115,9 @@ export class Container {
         'coep: "none" — Nodine requires cross-origin isolation (SharedArrayBuffer + WASM threads); there is no non-isolated fallback mode',
       ]);
     }
-    if (!options.runtimeUrl) {
-      throw new BootFailedError(
-        'BootOptions.runtimeUrl is required: pass the URL of the runtime ' +
-          "bundle's supervisor.mjs (this package's runtime/ directory, copied " +
-          'into your static file tree; see the README for the one-liner). ' +
-          'The page and the runtime must be served with COOP/COEP headers.',
-      );
-    }
+    // runtimeUrl is optional: the default matches the URL served by the
+    // Nodine Vite plugin (and produced by `npx nodine-stage public/nodine`).
+    const runtimeUrl = options.runtimeUrl == null ? DEFAULT_RUNTIME_URL : String(options.runtimeUrl);
 
     const term = new HeadlessTermSink();
     const statusEls = {
@@ -126,7 +130,7 @@ export class Container {
 
     let mod;
     try {
-      mod = await loadRuntimeModule(options.runtimeUrl);
+      mod = await loadRuntimeModule(runtimeUrl);
     } catch (e) {
       throw new BootFailedError(e instanceof Error ? e.message : String(e));
     }
@@ -164,7 +168,7 @@ export class Container {
       // fall back to the runtime's demo workspace if the name is unusable
     }
 
-    const container = new Container(supervisor, term, workdirPath, new URL(String(options.runtimeUrl), document.baseURI));
+    const container = new Container(supervisor, term, workdirPath, new URL(runtimeUrl, document.baseURI));
     container.__sup = supervisor;
 
     if (options.enablePreview !== false) {
