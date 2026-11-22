@@ -1,0 +1,55 @@
+# WebAssembly target configuration for the Carapace kernel.
+# Shared-memory + atomics are hard requirements of the canonical browser
+# profile (Chromium + COI + SAB + wasm threads) — no fallback build exists.
+# The KSM (shared WebAssembly.Memory) is IMPORTED and is the module's linear
+# memory (KERNEL_ABI.md §5.2), so the KCTL lives at linear address 0.
+#
+# NOTE (P2-003, miscompile): stock wasm32-unknown-unknown lets LLVM exploit
+# null-pointer UB. Stores through a provably-null-valued pointer (the KCTL
+# magic at offset 0) made the whole dominated region unreachable — LLVM
+# deleted init's body after the state check and folded the function to an
+# unconditional error (verified by disassembly). Fix: the kernel takes the KCTL
+# base as a RUNTIME parameter (carapace_init's kctl_base) so the pointer is
+# opaque to the optimizer; see crates/kernel-core/src/lib.rs carapace_init.
+#
+# NOTE (P2-004, memory-footprint fix — subagent B-1 + main agent finding):
+# wasm-ld lays out the module as [stack][data] STARTING AT LINEAR OFFSET 0.
+# With the stock 1 MiB default the stack occupied [0, 0x100000) — overlapping
+# the KCTL, the endpoint table, the kernel doorbell and endpoint 0 — and the
+# Start function (__wasm_init_memory) memory.init'ed the panic-location
+# .rodata at 0x100000 (endpoint-0 submit-ring slot 3072) at instantiation.
+# P2-003 passed only because its ring never exceeded ~200 slots and the
+# compiled code spilled only within a few KiB of the stack top. Fix:
+# -zstack-size relocates the whole [stack][data] block into the kernel heap —
+# stack top = 0x0508_0000 (KERNEL_HEAP_BASE + 128 KiB; §5.6 documents the heap
+# as the home of kernel stacks), .rodata lands at 0x0508_0000+, and the ABI
+# map [0, 0x0506_0000) is never touched by the module's own footprint.
+# __stack_pointer is additionally exported so tests can assert its value
+# (T66 instantiation-footprint gate). The build check
+# (scripts/check-wasm-layout.sh) enforces: __stack_pointer exported with init
+# == 0x0508_0000, no active data segments, and no memory.init destination
+# below KERNEL_HEAP_BASE. Kernel-internal state still MUST NOT use Rust
+# statics (they would create data segments) — kernel-private state lives in
+# the kernel heap via explicit offsets (P2_004_CONCURRENCY.md §4).
+[target.wasm32-unknown-unknown]
+rustflags = [
+  # P2-008 (merged): nightly >= ~2026-11 made panic_immediate_abort a real
+  # panic STRATEGY — the old `-Zbuild-std-features=panic_immediate_abort` is
+  # gone (core now compile_errors with a pointer at the new syntax). The
+  # strategy must reach the build-std crates too, so it rides the target
+  # rustflags (a RUSTFLAGS env var is ignored while target rustflags exist).
+  "-Z", "unstable-options",
+  "-C", "panic=immediate-abort",
+  "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals,+sign-ext",
+  "-C", "link-arg=--import-memory",
+  "-C", "link-arg=--shared-memory",
+  "-C", "link-arg=--max-memory=2147483648",
+  "-C", "link-arg=--export=__stack_pointer",
+  # P2-005-004b: __heap_base = the module [stack][data] footprint END (wasm-ld
+  # computes it). Exported so scripts/check-wasm-layout.sh can gate the
+  # footprint below the KH header (0x0509_0040) — linking `alloc`+`kernel-vfs`
+  # grew .rodata to ~14 KB and the old 64 B reservation silently overlapped
+  # the KH header (found live by the P2-005-004b smoke battery).
+  "-C", "link-arg=--export=__heap_base",
+  "-C", "link-arg=-zstack-size=84410368",
+]

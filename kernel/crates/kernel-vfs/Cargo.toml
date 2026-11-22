@@ -1,0 +1,27 @@
+[package]
+name = "kernel-vfs"
+version = "0.1.0"
+edition = "2021"
+description = "Carapace kernel VFS core — P2-005 (in-memory filesystem: inode arena, dual-index directories, 2-tier+null content, path resolver). Frozen architecture: docs/phase2/P2_005_VFS_SPEC.md"
+license = "MIT OR Apache-2.0"
+
+# NOT a member of the kernel workspace: kernel/Cargo.toml lists this crate
+# in its `exclude` table, so standalone runs here (`cargo test` — needs
+# unwinding, which the kernel workspace's panic-immediate-abort profiles
+# forbid; `cargo build --release` with the profile below) use THIS
+# manifest's profiles, while wasm builds through kernel-core's path
+# dependency use the kernel workspace profile (production shape).
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# None. The VFS core is self-contained: `alloc` types only, no KSM knowledge,
+# no kernel-abi dependency (the ABI dispatch layer in kernel-core translates
+# Errno -> ABI status; errno values below are the universal Linux/libuv set
+# from poc/p1-poc/uv-errno-linux.txt).
+
+[profile.dev]
+# default unwind panic — required by the test harness
+
+[profile.release]
+opt-level = 1

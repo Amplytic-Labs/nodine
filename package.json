@@ -1,0 +1,71 @@
+{
+  "name": "nodine",
+  "version": "0.3.0",
+  "description": "Nodine — a browser-based Node.js runtime. One package: the public API SDK plus the full runtime bundle (Rust/WASM kernel, genuine upstream Node.js v26.13.0, in-browser npm) that runs entirely in the user's browser tab.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "runtime",
+    "scripts/stage-runtime.mjs",
+    "examples",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "bin": {
+    "nodine-stage": "scripts/stage-runtime.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "keywords": [
+    "nodine",
+    "nodejs",
+    "runtime",
+    "browser",
+    "wasm",
+    "webassembly",
+    "container",
+    "virtual-filesystem",
+    "npm",
+    "webcontainer"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Amplytic-Labs/nodine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Amplytic-Labs/nodine/issues"
+  },
+  "homepage": "https://github.com/Amplytic-Labs/nodine#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.build.json && npm run test:types",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build:runtime": "node scripts/build-runtime.mjs",
+    "stage": "node scripts/stage-runtime.mjs",
+    "test": "node --test test/contracts.test.mjs test/adapter.test.mjs",
+    "test:e2e": "node test/e2e.cjs",
+    "test:types": "tsc -p tsconfig.test.json --noEmit || node scripts/check-types-fallback.cjs",
+    "check": "npm run build && npm run build:runtime && npm pack --dry-run",
+    "smoke": "node scripts/smoke-install.cjs",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

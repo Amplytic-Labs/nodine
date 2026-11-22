@@ -1,0 +1,26 @@
+[package]
+name = "kernel-vfs-bench"
+version = "0.1.0"
+edition = "2021"
+description = "P2-005-004b VFS microbench harness (B §10.2 battery B1–B10). Layer N = native host (std-backed allocator); Layer W = wasm32 with the EXACT production profile (kernel/.cargo/config.toml: imported shared memory, panic=immediate-abort, opt-level=1) + the kalloc allocator — Layer W gates all decisions (frozen spec §12)."
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+# The host bin target is the Layer N runner; the lib/cdylib is shared logic +
+# the Layer W wasm exports. `cargo build --lib --target wasm32-unknown-unknown`
+# produces the Layer W artifact; `cargo run --release -p kernel-vfs-bench` runs
+# Layer N.
+
+[[bin]]
+name = "kernel-vfs-bench"
+path = "src/main.rs"
+
+[dependencies]
+kernel-vfs = { path = "../kernel-vfs" }
+
+# NOTE: profiles come from the kernel workspace root (opt-level=1,
+# panic=immediate-abort for the wasm/production shape). The HOST (Layer N)
+# build must override the panic strategy back to unwind (prebuilt std):
+#   CARGO_PROFILE_RELEASE_PANIC=unwind cargo run --release -p kernel-vfs-bench

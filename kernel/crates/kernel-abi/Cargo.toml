@@ -1,0 +1,9 @@
+[package]
+name = "kernel-abi"
+version = "1.0.1"
+edition = "2021"
+description = "Normative Carapace kernel ABI definition (KERNEL_ABI.md v1.0.1 §24, frozen P2-002)"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["rlib"]

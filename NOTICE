@@ -1,0 +1,60 @@
+Nodine
+Copyright (C) 2026 Nodine / Amplytic Labs
+
+This package (`nodine`) is licensed under the GNU Affero General Public
+License, version 3 only (AGPL-3.0-only) — see LICENSE. The Nodine-authored
+components are: the TypeScript API SDK (src/), the runtime supervisor,
+runtime worker, kernel driver and preview service worker (runtime/*.mjs,
+runtime/*.js), the Rust/WASM microkernel source and binary (kernel/,
+runtime/kernel_core.wasm), the undici browser shim
+(vendor/undici-shim.js), the Nodine coreutils (vendor/coreutils/), and the
+build/staging scripts (scripts/).
+
+This package distributes the following third-party components, each under
+its own license. The applicable license texts accompany the components in
+this repository (vendor/) or are available from the upstream projects:
+
+  - Node.js library sources, v26.13.0 (vendor/node-v26.13.0/lib, embedded
+    verbatim into runtime/libsources.json) — "Copyright Node.js
+    contributors. All rights reserved." MIT-style license, see
+    vendor/node-v26.13.0/LICENSE.
+
+  - npm, v12.2.2 (embedded in runtime/npm-seed-blob as
+    /usr/lib/node_modules/npm) — Artistic License 2.0.
+
+  - @yarnpkg/shell, v4.1.3 (embedded as /usr/lib/node_modules/shell) —
+    BSD-2-Clause. Two defect fixes ($? variable handling) are applied at
+    build time; see scripts/patch-yarn-shell.cjs.
+
+  - @yarnpkg/shell production dependency closure, pinned versions
+    (embedded under /usr/lib/node_modules/shell/node_modules in the seed
+    blob): @yarnpkg/fslib 3.1.5, @yarnpkg/parsers 3.1.0, chalk 4.1.2,
+    clipanion 4.0.0-rc.4, cross-spawn 7.0.6, fast-glob 3.3.3,
+    micromatch 4.0.8, tslib 2.9.1 and transitive dependencies —
+    MIT / ISC / 0BSD / Python-2.0 per package (full list in
+    scripts/build-shell-deps.cjs; each package.json in the seed blob
+    carries its license field).
+
+  - pako, v2.1.0 (runtime/unpkg/pako, and embedded as
+    /usr/lib/node_modules/pako) — MIT AND Zlib.
+
+  - @noble/hashes, v1.8.0 (runtime/unpkg/noble, and embedded as
+    /usr/lib/node_modules/@noble/hashes) — MIT. Bare-specifier imports are
+    rewritten to relative URLs at build time; no code changes.
+
+  - js-md5, v0.8.3 (runtime/unpkg/jsmd5, and embedded as
+    /usr/lib/node_modules/jsmd5) — MIT.
+
+  - acorn, v8.15.0 (runtime/acorn-vendor.mjs; Node internal/deps dist
+    copies in vendor/internal-deps/acorn) — MIT.
+
+  - minimatch (Node internal/deps dist copy in
+    vendor/internal-deps/minimatch) — ISC.
+
+The browser runtime boots the vendored Node.js library sources verbatim
+(one source-level graft is applied at build time: the npm global root is
+appended to Module.globalPaths — see scripts/build-runtime.mjs). No
+StackBlitz/WebContainers code is contained in this package. "Nodine" and
+the Nodine logo are trademarks of Amplytic Labs. This project is not
+affiliated with, endorsed by, or derived from any other container-runtime
+vendor.

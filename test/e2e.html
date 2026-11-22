@@ -1,0 +1,157 @@
+<!doctype html>
+<!-- Nodine SDK E2E: drives the built SDK (dist/) against the REAL runtime
+     bundle served by examples/demo/server.mjs. Results land in
+     window.__e2e; the driver is test/e2e.cjs (playwright, headless). -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Nodine SDK E2E</title>
+</head>
+<body>
+<script type="module">
+  import { Container } from '/sdk/index.js';
+
+  const results = [];
+  window.__e2e = { results, done: false, containerBooted: false };
+
+  const check = (name, cond, extra) => {
+    results.push({ name, pass: !!cond, extra: extra ?? null });
+  };
+
+  const readAll = async (proc, deadlineMs = 20000) => {
+    const reader = proc.output.getReader();
+    let out = '';
+    const deadline = Date.now() + deadlineMs;
+    let exited = false;
+    proc.exit.then(() => { exited = true; }).catch(() => {});
+    while (Date.now() < deadline) {
+      const r = await Promise.race([reader.read(), new Promise((r) => setTimeout(() => r('timeout'), 500))]);
+      if (r === 'timeout') { if (exited && out) break; continue; }
+      if (r.done) break;
+      out += r.value;
+      if (exited && out) break;
+    }
+    return out;
+  };
+
+  const run = async () => {
+    // ---- 1. boot ------------------------------------------------------
+    let container = null;
+    try {
+      const v = (await (await fetch('/runtime-version.txt', { cache: 'no-store' })).text()).trim();
+      container = await Container.boot({
+        runtimeUrl: '/supervisor.mjs?v=' + v,
+        workdirName: 'e2e-project',
+        coep: 'require-corp',
+      });
+    } catch (e) {
+      check('boot', false, String(e && e.message || e));
+      window.__e2e.done = true;
+      return;
+    }
+    check('boot', true);
+    check('workdir', container.workdir === '/home/user/e2e-project', container.workdir);
+    check('path', container.path === '/usr/bin:/bin', container.path);
+    window.__e2e.containerBooted = true;
+
+    // ---- 2. mount + fs readback ---------------------------------------
+    try {
+      await container.mount({
+        'package.json': { file: { contents: '{"name":"e2e","version":"1.0.0"}' } },
+        src: { directory: { 'main.js': { file: { contents: 'console.log("hello from nodine")' } } } },
+      });
+      const pkg = await container.fs.readFile('package.json', { encoding: 'utf-8' });
+      check('mount+readFile', pkg.includes('"e2e"'), pkg.slice(0, 60));
+      const names = await container.fs.readdir('src');
+      check('fs.readdir', names.includes('main.js'), JSON.stringify(names));
+      await container.fs.writeFile('note.txt', 'sdk wrote this');
+      const back = await container.fs.readFile('note.txt', { encoding: 'utf-8' });
+      check('fs.writeFile round-trip', back === 'sdk wrote this', back);
+      const entries = await container.fs.readdir('.', { withFileTypes: true });
+      const srcEntry = entries.find((e) => e.name === 'src');
+      check('fs.readdir withFileTypes', !!srcEntry && srcEntry.isDirectory());
+    } catch (e) {
+      check('mount+fs', false, String(e && e.message || e));
+    }
+
+    // ---- 3. spawn: node script from the mounted tree --------------------
+    let output = '';
+    try {
+      const proc = await container.spawn('node', ['src/main.js']);
+      output = await readAll(proc);
+      check('spawn output', output.includes('hello from nodine'), JSON.stringify(output.slice(0, 120)));
+      const code = await Promise.race([proc.exit, new Promise((r) => setTimeout(() => r('pending'), 5000))]);
+      check('spawn exit code', code === 0, String(code));
+    } catch (e) {
+      check('spawn', false, String(e && e.message || e));
+    }
+
+    // ---- 4. spawn: node -e with stdin echo -------------------------------
+    try {
+      const proc = await container.spawn('node', ['-e',
+        'process.stdin.on("data",(c)=>{process.stdout.write("ECHO:"+c)})']);
+      const writer = proc.input.getWriter();
+      await writer.write('ping-123');
+      const echoOut = await readAll(proc);
+      check('stdin->stdout echo', echoOut.includes('ECHO:ping-123'), JSON.stringify(echoOut.slice(0, 120)));
+      try { proc.kill(); } catch {}
+    } catch (e) {
+      check('stdin echo', false, String(e && e.message || e));
+    }
+
+    // ---- 5. preview port events ----------------------------------------
+    try {
+      let portOpened = null;
+      const off = container.on('server-ready', (port, url) => {
+        if (!portOpened) portOpened = { port, url };
+      });
+      const proc = await container.spawn('node', ['-e',
+        'const http=require("http");const s=http.createServer((q,r)=>{r.end("ok")});s.listen(4173,"127.0.0.1",()=>{console.log("LISTENING")})']);
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline && !portOpened) await new Promise((r) => setTimeout(r, 250));
+      off();
+      check('server-ready event', !!portOpened, JSON.stringify(portOpened));
+      if (portOpened) {
+        const resp = await fetch(portOpened.url)
+          .then((r) => r.text().then((t) => ({ status: r.status, body: t })))
+          .catch((e) => ({ status: 0, body: 'FETCH_FAIL:' + e.message }));
+        check('preview url serves (first fetch)', resp.status === 200 && resp.body === 'ok',
+          JSON.stringify(resp).slice(0, 120));
+        const resp2 = await fetch(portOpened.url)
+          .then((r) => r.text().then((t) => ({ status: r.status, body: t })))
+          .catch((e) => ({ status: 0, body: 'FETCH_FAIL:' + e.message }));
+        check('preview url serves (second fetch)', resp2.status === 200 && resp2.body === 'ok',
+          JSON.stringify(resp2).slice(0, 120));
+      }
+      try { proc.kill(); } catch {}
+      await new Promise((r) => setTimeout(r, 1000));
+      const respDead = await fetch(portOpened ? portOpened.url : '/preview/x/1/')
+        .then((r) => r.text().then((t) => ({ status: r.status, body: t })))
+        .catch(() => ({ status: 0, body: '' }));
+      check('preview port closed after kill', respDead.status === 503 || respDead.status === 502,
+        JSON.stringify(respDead).slice(0, 100));
+    } catch (e) {
+      check('preview', false, String(e && e.message || e));
+    }
+
+    // ---- 6. teardown -----------------------------------------------------
+    try {
+      await container.teardown();
+      check('teardown', true);
+      let destroyed = false;
+      try { container.workdir; } catch (e) { destroyed = /torn down|destroyed/i.test(String(e && e.message || e)); }
+      check('post-teardown throws', destroyed);
+    } catch (e) {
+      check('teardown', false, String(e && e.message || e));
+    }
+
+    window.__e2e.done = true;
+  };
+
+  run().catch((e) => {
+    results.push({ name: 'harness', pass: false, extra: String(e && e.stack || e) });
+    window.__e2e.done = true;
+  });
+</script>
+</body>
+</html>

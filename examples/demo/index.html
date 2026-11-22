@@ -1,0 +1,170 @@
+<!doctype html>
+<!-- Nodine demo host page — a minimal, complete example of embedding the
+     runtime. Served by examples/demo/server.mjs (which stages the runtime
+     bundle at the ORIGIN ROOT — the recommended layout for previews). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nodine — browser Node.js demo</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 2rem 1rem;
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #101418; color: #d7dde3;
+    display: flex; justify-content: center; min-height: 100vh;
+  }
+  main { width: 100%; max-width: 46rem; }
+  h1 { font-size: 1.45rem; margin: 0 0 .3rem; color: #7ee787; }
+  h1 small { color: #8b949e; font-weight: 400; font-size: .8rem; }
+  p.sub { color: #8b949e; margin: 0 0 1.4rem; }
+  section { margin-top: 1.2rem; }
+  #log {
+    list-style: none; margin: 0; padding: .8rem 1rem;
+    background: #0b0f13; border: 1px solid #21262d; border-radius: 8px;
+    font: 13px/1.6 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+    white-space: pre-wrap; word-break: break-word; max-height: 26rem; overflow: auto;
+  }
+  #log li { padding: 1px 0; }
+  .ok::before { content: "✔ "; color: #7ee787; }
+  .fail::before { content: "✘ "; color: #f85149; }
+  .info::before { content: "→ "; color: #79b8ff; }
+  #preview a { color: #79b8ff; }
+  button {
+    font: inherit; padding: .45rem .9rem; margin-right: .5rem;
+    background: #1f6feb; color: #fff; border: 0; border-radius: 6px; cursor: pointer;
+  }
+  button:disabled { opacity: .45; cursor: default; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Nodine <small>a real Node.js runtime, in your browser tab</small></h1>
+  <p class="sub">
+    This page boots the genuine Node.js v26.13.0 runtime locally — kernel in
+    WASM, one Web Worker per process, real <code>npm</code>. Nothing leaves
+    your browser except the registry requests npm itself makes.
+  </p>
+
+  <section>
+    <button id="run">Run demo</button>
+    <button id="npm" disabled>npm install left-pad</button>
+  </section>
+
+  <section><ol id="log"></ol></section>
+  <section id="preview"></section>
+</main>
+
+<script type="module">
+  import { Container } from '/sdk/index.js';
+
+  const log = (text, cls = 'info') => {
+    const li = document.createElement('li');
+    li.className = cls;
+    li.textContent = text;
+    document.getElementById('log').appendChild(li);
+  };
+  let container = null;
+  let previewUrl = null;
+
+  const readAll = async (proc, timeoutMs = 20000) => {
+    const reader = proc.output.getReader();
+    let out = '';
+    const deadline = Date.now() + timeoutMs;
+    let exited = false;
+    proc.exit.then(() => { exited = true; }).catch(() => {});
+    while (Date.now() < deadline) {
+      const r = await Promise.race([reader.read(), new Promise((r) => setTimeout(() => r('t'), 300))]);
+      if (r === 't') { if (exited) break; continue; }
+      if (r.done) break;
+      out += r.value;
+      if (exited) break;
+    }
+    return out;
+  };
+
+  const boot = async () => {
+    log('booting the runtime (kernel + Node.js lib sources + npm seed)…');
+    // cache-bust: never boot a stale runtime after a re-stage
+    const v = await (await fetch('/runtime-version.txt', { cache: 'no-store' })).text();
+    container = await Container.boot({
+      runtimeUrl: '/supervisor.mjs?v=' + v.trim(),
+      coep: 'require-corp',
+      workdirName: 'demo',
+    });
+    log('booted — workdir ' + container.workdir + ', PATH ' + container.path, 'ok');
+  };
+
+  document.getElementById('run').addEventListener('click', async (ev) => {
+    ev.target.disabled = true;
+    try {
+      if (!container) await boot();
+
+      // 1. mount files into the container filesystem
+      await container.mount({
+        'package.json': { file: { contents: JSON.stringify({ name: 'nodine-demo', private: true }) } },
+        'main.js': { file: { contents: 'console.log("hello from", process.version, "on the nodine kernel")\n' } },
+      });
+      log('mounted package.json + main.js', 'ok');
+
+      // 2. run them with real Node.js
+      const proc = await container.spawn('node', ['main.js']);
+      const out = await readAll(proc);
+      await proc.exit;
+      log('node main.js → ' + out.trim(), /hello from/.test(out) ? 'ok' : 'fail');
+
+      // 3. fs round-trip through the public API
+      await container.fs.writeFile('note.txt', 'written by the SDK');
+      const back = await container.fs.readFile('note.txt', { encoding: 'utf-8' });
+      log('fs writeFile/readFile round-trip → ' + JSON.stringify(back), back === 'written by the SDK' ? 'ok' : 'fail');
+
+      // 4. a real dev server + same-origin preview URL
+      const server = await container.spawn('node', ['-e',
+        'const http=require("http");'
+        + 'const s=http.createServer((q,r)=>{'
+        + '  r.writeHead(200,{"content-type":"text/html"});'
+        + '  r.end("<h1>Hello from a Node.js dev server inside your browser</h1>");'
+        + '});'
+        + 's.listen(4173,()=>console.log("dev server on 4173"));']);
+      void readAll(server); // keep draining so the worker never blocks on a full pipe
+      await new Promise((res) => {
+        const off = container.on('server-ready', (port, url) => { previewUrl = url; off(); res(); });
+        setTimeout(res, 20000);
+      });
+      if (previewUrl) {
+        document.getElementById('preview').innerHTML =
+          'Preview server running: <a href="' + previewUrl + '" target="_blank">' + previewUrl + '</a>';
+        log('server-ready event fired, preview URL ' + previewUrl, 'ok');
+      } else {
+        log('no server-ready event — is the preview service worker registered?', 'fail');
+      }
+
+      document.getElementById('npm').disabled = false;
+    } catch (e) {
+      log('demo failed: ' + (e && e.message ? e.message : e), 'fail');
+    }
+  });
+
+  document.getElementById('npm').addEventListener('click', async (ev) => {
+    ev.target.disabled = true;
+    try {
+      log('spawning npm install left-pad (real npm, direct network mode)…');
+      const proc = await container.spawn('npm', ['install', 'left-pad']);
+      const out = await readAll(proc, 120000);
+      const code = await proc.exit;
+      const ok = /added 1 package/.test(out) && code === 0;
+      log('npm install exit ' + code + (ok ? ' — left-pad installed in the browser' : ''), ok ? 'ok' : 'fail');
+
+      const use = await container.spawn('node', ['-e',
+        'console.log("left-pad says:", require("left-pad")("ab", 8, "-"))']);
+      const out2 = await readAll(use);
+      await use.exit;
+      log('require("left-pad") → ' + out2.trim(), /left-pad says:/.test(out2) ? 'ok' : 'fail');
+    } catch (e) {
+      log('npm demo failed: ' + (e && e.message ? e.message : e), 'fail');
+    }
+  });
+</script>
+</body>
+</html>

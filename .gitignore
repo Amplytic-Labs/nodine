@@ -1,0 +1,13 @@
+# build output
+dist/
+
+# dependencies
+node_modules/
+
+# runtime build cache (rebuilt from vendor/deps by scripts/build-runtime.mjs)
+.cache/
+
+# npm noise
+*.log
+.npm/
+*.tgz

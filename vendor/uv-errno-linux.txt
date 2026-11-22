@@ -1,0 +1,73 @@
+E2BIG -7 argument list too long
+EACCES -13 permission denied
+EADDRINUSE -98 address already in use
+EADDRNOTAVAIL -99 address not available
+EAFNOSUPPORT -97 address family not supported
+EAGAIN -11 resource temporarily unavailable
+EAI_ADDRFAMILY -3000 address family not supported
+EAI_AGAIN -3001 temporary failure
+EAI_BADFLAGS -3002 bad ai_flags value
+EAI_BADHINTS -3013 invalid value for hints
+EAI_CANCELED -3003 request canceled
+EAI_FAIL -3004 permanent failure
+EAI_FAMILY -3005 ai_family not supported
+EAI_MEMORY -3006 out of memory
+EAI_NODATA -3007 no address
+EAI_NONAME -3008 unknown node or service
+EAI_OVERFLOW -3009 argument buffer overflow
+EAI_PROTOCOL -3014 resolved protocol is unknown
+EAI_SERVICE -3010 service not available for socket type
+EAI_SOCKTYPE -3011 socket type not supported
+EALREADY -114 connection already in progress
+EBADF -9 bad file descriptor
+EBUSY -16 resource busy or locked
+ECANCELED -125 operation canceled
+ECHARSET -4080 invalid Unicode character
+ECONNABORTED -103 software caused connection abort
+ECONNREFUSED -111 connection refused
+ECONNRESET -104 connection reset by peer
+EDESTADDRREQ -89 destination address required
+EEXIST -17 file already exists
+EFAULT -14 bad address in system call argument
+EFBIG -27 file too large
+EHOSTUNREACH -113 host is unreachable
+EINTR -4 interrupted system call
+EINVAL -22 invalid argument
+EIO -5 i/o error
+EISCONN -106 socket is already connected
+EISDIR -21 illegal operation on a directory
+ELOOP -40 too many symbolic links encountered
+EMFILE -24 too many open files
+EMSGSIZE -90 message too long
+ENAMETOOLONG -36 name too long
+ENETDOWN -100 network is down
+ENETUNREACH -101 network is unreachable
+ENFILE -23 file table overflow
+ENOBUFS -105 no buffer space available
+ENODEV -19 no such device
+ENOENT -2 no such file or directory
+ENOMEM -12 not enough memory
+ENONET -64 machine is not on the network
+ENOPROTOOPT -92 protocol not available
+ENOSPC -28 no space left on device
+ENOSYS -38 function not implemented
+ENOTCONN -107 socket is not connected
+ENOTDIR -20 not a directory
+ENOTEMPTY -39 directory not empty
+ENOTSOCK -88 socket operation on non-socket
+ENOTSUP -95 operation not supported on socket
+EOVERFLOW -75 value too large for defined data type
+EPERM -1 operation not permitted
+EPIPE -32 broken pipe
+EPROTO -71 protocol error
+EPROTONOSUPPORT -93 protocol not supported
+EPROTOTYPE -91 protocol wrong type for socket
+ERANGE -34 result too large
+EROFS -30 read-only file system
+ESHUTDOWN -108 cannot send after transport endpoint shutdown
+ESPIPE -29 invalid seek
+ESRCH -3 no such process
+ETIMEDOUT -110 connection timed out
+ETXTBSY -26 text file is busy
+EXDEV -18 cross-device link not permitted
+UNKNOWN -4094 unknown error

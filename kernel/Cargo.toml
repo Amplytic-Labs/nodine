@@ -1,0 +1,17 @@
+cargo-features = ["panic-immediate-abort"]
+[workspace]
+resolver = "2"
+members = ["crates/kernel-abi", "crates/kernel-core", "crates/kernel-vfs-bench"]
+# kernel-vfs is a path DEPENDENCY of kernel-core but NOT a member: its
+# standalone host test runs need unwinding panics (its own profile tables),
+# while wasm builds pull it in with this workspace's production profile.
+exclude = ["crates/kernel-vfs"]
+
+[profile.release]
+opt-level = 1
+lto = false
+panic = "immediate-abort"
+debug = false
+
+[profile.dev]
+panic = "immediate-abort"

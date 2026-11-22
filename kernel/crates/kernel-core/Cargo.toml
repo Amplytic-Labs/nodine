@@ -1,0 +1,14 @@
+[package]
+name = "kernel-core"
+version = "0.1.0"
+edition = "2021"
+description = "Carapace Rust/WASM kernel core — P2-003 foundation (init, ABI verify, shared-memory, dispatch, shutdown)"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+kernel-abi = { path = "../kernel-abi" }
+# P2-005-004b: the VFS core (own standalone workspace; path-dep here).
+kernel-vfs = { path = "../kernel-vfs" }
