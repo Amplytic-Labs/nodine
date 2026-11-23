@@ -266,9 +266,6 @@ protocol between supervisor, workers and kernel).
 
 ## License
 
-**AGPL-3.0-only** — see [LICENSE](LICENSE). Third-party components (Node.js
-lib sources, npm, @yarnpkg/shell, acorn, pako, @noble/hashes, js-md5 and
-the shell dependency closure) ship under their own licenses, itemized in
-[NOTICE](NOTICE). "Nodine" and the Nodine logo are trademarks of Amplytic
-Labs. This project is not affiliated with any other container-runtime
-vendor.
+@amplytic/nodine is licensed under the **Mozilla Public License 2.0** — see [LICENSE](./LICENSE).
+If you modify this package, you must share those modifications under MPL-2.0;
+software that integrates or uses nodine is not covered by that requirement.
