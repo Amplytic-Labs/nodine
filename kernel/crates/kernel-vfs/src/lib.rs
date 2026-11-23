@@ -1,4 +1,4 @@
-//! # kernel-vfs — the Carapace in-memory virtual filesystem core (P2-005)
+//! # kernel-vfs — the Nodine in-memory virtual filesystem core (P2-005)
 //!
 //! Frozen architecture: `docs/phase2/P2_005_VFS_SPEC.md` (P2-005-003).
 //! This crate is the single source of truth for active filesystem state.

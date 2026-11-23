@@ -272,10 +272,10 @@ spawned process:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `CARAPACE_NETWORK_MODE` | `'direct'` | `'direct'` — the browser talks to allowlisted registries itself; `'proxy'` — requests that a browser cannot send cross-origin ride a host relay |
-| `CARAPACE_NETWORK_ALLOWLIST` | `registry.npmjs.org` | comma-separated HTTPS hostnames the direct adapter may contact |
-| `CARAPACE_NETWORK_PROXY_URL` | (unset) | replaces the built-in same-origin `/egress` relay base URL with a host-supplied one |
-| `CARAPACE_DIRECT_CORGI` | (unset) | kill switch for the corgi substitution — see below |
+| `NODINE_NETWORK_MODE` | `'direct'` | `'direct'` — the browser talks to allowlisted registries itself; `'proxy'` — requests that a browser cannot send cross-origin ride a host relay |
+| `NODINE_NETWORK_ALLOWLIST` | `registry.npmjs.org` | comma-separated HTTPS hostnames the direct adapter may contact |
+| `NODINE_NETWORK_PROXY_URL` | (unset) | replaces the built-in same-origin `/egress` relay base URL with a host-supplied one |
+| `NODINE_DIRECT_CORGI` | (unset) | kill switch for the corgi substitution — see below |
 
 ### Direct mode (default)
 
@@ -302,33 +302,33 @@ Substitution is skipped — and the full-metadata request served as-is — when 
 install is date-sensitive: npm's `before` / `min-release-age` options are
 detected across `process.env`, `process.argv` and the `~/.npmrc` / project
 `.npmrc` files, because an abbreviated packument cannot answer a
-date-filtered resolution. Setting `CARAPACE_DIRECT_CORGI` to `off`, `0` or
+date-filtered resolution. Setting `NODINE_DIRECT_CORGI` to `off`, `0` or
 `false` (case-insensitive) disables substitution outright — every packument
 then rides the original full-metadata accept.
 
 ### Proxy mode (opt-in)
 
-`Container.boot({ env: { CARAPACE_NETWORK_MODE: 'proxy' } })` opts the runtime
+`Container.boot({ env: { NODINE_NETWORK_MODE: 'proxy' } })` opts the runtime
 into routing the requests a browser cannot send cross-origin — anything with
 non-safelisted headers such as npm's `npm-command`/`pacote-*` headers,
 `Authorization`, or a non-simple `content-type` — through a **same-origin
 `/egress` relay the host must serve**. The relay envelope carries the real
-target in `x-carapace-url`, the real method in `x-carapace-method`, and the
-full original header set in `x-carapace-headers`, so nothing is silently
+target in `x-nodine-url`, the real method in `x-nodine-method`, and the
+full original header set in `x-nodine-headers`, so nothing is silently
 de-authenticated or downgraded. A GET carrying a body becomes an envelope POST
 (`fetch` cannot GET with a body); the relay forwards the real method. Hosts that
-run their relay elsewhere set `CARAPACE_NETWORK_PROXY_URL` to its base URL.
+run their relay elsewhere set `NODINE_NETWORK_PROXY_URL` to its base URL.
 
 ```mermaid
 flowchart TD
     R["ClientRequest"] --> S{"same-origin target?"}
     S -- "yes" --> F["browser fetch"]
-    S -- "no" --> M{"CARAPACE_NETWORK_MODE"}
+    S -- "no" --> M{"NODINE_NETWORK_MODE"}
     M -- "'proxy'" --> L
     M -- "'direct' (default)" --> G{"GET/HEAD?<br/>https?<br/>allowlisted host?<br/>no Authorization?"}
     G -- "no (fails closed)" --> L{"headers outside<br/>CORS safelist?"}
     G -- "yes" --> C
-    L -- "yes" --> RLY["/egress relay<br/>or CARAPACE_NETWORK_PROXY_URL<br/>(x-carapace-* envelope)"]
+    L -- "yes" --> RLY["/egress relay<br/>or NODINE_NETWORK_PROXY_URL<br/>(x-nodine-* envelope)"]
     L -- "no" --> F
     C{"packument GET<br/>install/update?<br/>accept application/json?"}
     C -- "no" --> D["forward accept only,<br/>direct fetch"]
@@ -372,7 +372,7 @@ a real system with an npm prefix of `/usr`.
 ## 6. Constraints and honest limits
 
 - **Allowlisted registries only.** Direct mode permits anonymous HTTPS GET/HEAD
-  to hosts in `CARAPACE_NETWORK_ALLOWLIST`, which defaults to
+  to hosts in `NODINE_NETWORK_ALLOWLIST`, which defaults to
   `registry.npmjs.org` alone. Pointing `npm_config_registry` (or `.npmrc`) at a
   different registry does nothing unless that host is added to the allowlist
   too.
@@ -392,8 +392,8 @@ a real system with an npm prefix of `/usr`.
   in direct mode; re-enabling them via env requires a relay to carry the
   requests.
 - **Proxy mode is a host commitment.** Setting
-  `CARAPACE_NETWORK_MODE='proxy'` without serving the same-origin `/egress`
-  relay (or setting `CARAPACE_NETWORK_PROXY_URL` to one) makes every
+  `NODINE_NETWORK_MODE='proxy'` without serving the same-origin `/egress`
+  relay (or setting `NODINE_NETWORK_PROXY_URL` to one) makes every
   non-safelisted request fail.
 - **`pnpm` is not part of the shipped image** — `/usr/lib/node_modules` ships
   npm only.

@@ -1,10 +1,10 @@
-/* sw-opencontainer.js — the Nodine browser preview gateway.
+/* sw-nodine.js — the Nodine browser preview gateway.
  *
  * B1-PREVIEW (batch 1 of the package/app separation). This is the
  * fully-browser preview transport: an http.Server.listen() inside the
  * runtime reaches the BROWSER through this same-origin service worker —
  * no host server, no external proxy, no tunnel. (The
- * WebContainers architecture maps their *.webcontainer-api.io preview domain
+ * Nodines architecture maps their *.nodine-api.io preview domain
  * onto the same mechanism at StackBlitz; ours stays on the app's own origin.)
  *
  * URL scheme:   /preview/<sid>/<port>/<path...>?<query>

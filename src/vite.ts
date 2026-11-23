@@ -83,7 +83,7 @@ const MIME: Record<string, string> = {
 // app's own root files, so only these names are intercepted.
 const RUNTIME_TOP_NAMES = new Set([
   'supervisor.mjs', 'runtime-worker.mjs', 'kernel-driver.js', 'kernel_core.wasm',
-  'sync-module-wrap.mjs', 'acorn-vendor.mjs', 'sw-opencontainer.js', 'uvmap.json',
+  'sync-module-wrap.mjs', 'acorn-vendor.mjs', 'sw-nodine.js', 'uvmap.json',
   'libsources.json', 'npm-manifest.json', 'npm-seed-blob', 'runtime-version.txt',
   'unpkg',
 ]);

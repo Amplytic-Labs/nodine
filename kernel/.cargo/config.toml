@@ -1,4 +1,4 @@
-# WebAssembly target configuration for the Carapace kernel.
+# WebAssembly target configuration for the Nodine kernel.
 # Shared-memory + atomics are hard requirements of the canonical browser
 # profile (Chromium + COI + SAB + wasm threads) — no fallback build exists.
 # The KSM (shared WebAssembly.Memory) is IMPORTED and is the module's linear
@@ -9,8 +9,8 @@
 # magic at offset 0) made the whole dominated region unreachable — LLVM
 # deleted init's body after the state check and folded the function to an
 # unconditional error (verified by disassembly). Fix: the kernel takes the KCTL
-# base as a RUNTIME parameter (carapace_init's kctl_base) so the pointer is
-# opaque to the optimizer; see crates/kernel-core/src/lib.rs carapace_init.
+# base as a RUNTIME parameter (nodine_init's kctl_base) so the pointer is
+# opaque to the optimizer; see crates/kernel-core/src/lib.rs nodine_init.
 #
 # NOTE (P2-004, memory-footprint fix — subagent B-1 + main agent finding):
 # wasm-ld lays out the module as [stack][data] STARTING AT LINEAR OFFSET 0.

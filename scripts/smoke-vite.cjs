@@ -144,7 +144,7 @@ export default defineConfig({ plugins: [nodine()] });
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('[page:' + m.type() + ']', m.text().slice(0, 250)); });
   page.on('response', (r) => {
     const u = r.url();
-    if (u.includes('sw-opencontainer') || /\/(preview)\//.test(u)) {
+    if (u.includes('sw-nodine') || /\/(preview)\//.test(u)) {
       console.log('[resp]', r.status(), '"' + (r.headers()['content-type'] || '') + '"', u.slice(0, 130));
     }
   });
@@ -176,7 +176,7 @@ export default defineConfig({ plugins: [nodine()] });
 
   // 5. production build contains the runtime bundle
   execFileSync(viteBin, ['build'], { cwd: app, stdio: 'pipe' });
-  for (const f of ['nodine/supervisor.mjs', 'nodine/kernel_core.wasm', 'nodine/npm-seed-blob', 'nodine/sw-opencontainer.js', 'nodine/libsources.json']) {
+  for (const f of ['nodine/supervisor.mjs', 'nodine/kernel_core.wasm', 'nodine/npm-seed-blob', 'nodine/sw-nodine.js', 'nodine/libsources.json']) {
     if (!fs.existsSync(path.join(app, 'dist', f))) { console.log('  FAIL  build output missing ' + f); failed++; }
   }
   if (!failed) console.log('  PASS  vite build output contains the runtime bundle (dist/nodine/…)');

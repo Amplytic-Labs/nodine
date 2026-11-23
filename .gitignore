@@ -11,3 +11,6 @@ node_modules/
 *.log
 .npm/
 *.tgz
+
+# vendored dependency tarballs ARE committed (build inputs for build:runtime)
+!vendor/deps/*.tgz

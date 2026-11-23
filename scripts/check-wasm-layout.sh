@@ -16,7 +16,7 @@
 #      footprint) is EXPORTED and <= KH_BASE (0x0509_0040). P2-005-004b
 #      found live that linking `alloc` + `kernel-vfs` grew .rodata to ~14 KB;
 #      the P2-004 64 B reservation overflowed and the KH-header/epdir writes
-#      at boot clobbered the module's own constants (carapace_init returned
+#      at boot clobbered the module's own constants (nodine_init returned
 #      ENOMEM with a half-booted VFS). The kernel-heap structures were moved
 #      +64 KiB above the stack top; this check keeps every future build
 #      inside that headroom.

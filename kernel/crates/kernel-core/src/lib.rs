@@ -1,6 +1,6 @@
-//! # carapace kernel-core — P2-004 shared-memory transport completion
+//! # nodine kernel-core — P2-004 shared-memory transport completion
 //!
-//! The Rust/WASM kernel of Carapace, compiled to `wasm32-unknown-unknown` and
+//! The Rust/WASM kernel of Nodine, compiled to `wasm32-unknown-unknown` and
 //! instantiated in its own Dedicated Worker (the kernel worker) with the KSM —
 //! a shared `WebAssembly.Memory` — imported as linear memory. Linear-memory
 //! offset 0 is the KSM base (`KERNEL_ABI.md` v1.0.2 §5.2).
@@ -15,16 +15,16 @@
 //! P2-005-004b: the kernel heap allocator (`#[global_allocator]` over the
 //! KSM remainder — B D5a) and the VFS core (`kernel-vfs`) are booted here,
 //! with the Phase-2 mount layout. The fs ABI OPS still return
-//! `CARAPACE_ENOOP` until the P2-005-006 dispatch batch; `KERNEL_CAP_PERSIST`
+//! `NODINE_ENOOP` until the P2-005-006 dispatch batch; `KERNEL_CAP_PERSIST`
 //! is cleared (AV-12 — the frozen ABI §20.1 table lists bit 3 = 0 for
 //! v1.0.2).
 //!
 //! Execution model (KERNEL_ABI §10): the kernel worker = this wasm module +
 //! a JS driver. The driver owns all platform waits and wakes; the kernel never
-//! waits or busy-loops. `carapace_pump(now_ms, op_budget)` is bounded per call
+//! waits or busy-loops. `nodine_pump(now_ms, op_budget)` is bounded per call
 //! (op budget) so the driver can keep the §5.3 heartbeat fresh even under
 //! full 64×4096 saturation (P2_004_FAILURE_SEMANTICS.md F-E1); the driver
-//! re-pumps while `carapace_pending()` reports work.
+//! re-pumps while `nodine_pending()` reports work.
 //!
 //! Memory discipline (load-bearing, P2-004 audit):
 //! - NO Rust statics/BSS anywhere: an active data segment would be placed by
@@ -138,7 +138,7 @@ const KCTL_HEARTBEAT: u32 = 0x28;
 const KCTL_DOORBELL_OFFSET: u32 = 0x30;
 /// Stdin feed scratch (P2-006-007, ABI v1.0.3 layout addition): 1 KiB
 /// inside the reserved doorbell region, at a fixed offset — the driver
-/// writes terminal input bytes here and calls `carapace_stdin_feed`.
+/// writes terminal input bytes here and calls `nodine_stdin_feed`.
 /// Reserved-region layout is documented in the KERNEL_ABI §5.2 delta.
 const STDIN_FEED_SCRATCH_OFF: u32 = 0x2100;
 const STDIN_FEED_SCRATCH_CAP: u32 = 1024;
@@ -455,7 +455,7 @@ unsafe fn fdstate_mut() -> Option<&'static mut FdState> {
 }
 
 /// FC-2: the ONE shared process-reclaim helper — invoked from
-/// `endpoint_drain` (clean exit) AND `carapace_endpoint_died` (worker
+/// `endpoint_drain` (clean exit) AND `nodine_endpoint_died` (worker
 /// death), with the pid read from the slot BEFORE the DEAD store. No-ops
 /// when the FD subsystem is not booted or the pid has no record.
 ///
@@ -591,7 +591,7 @@ unsafe fn block_reset_dynamic(blk: u32) {
 // ---------------------------------------------------------------------------
 
 /// Kernel boot. Idempotent-guarded: a second call while RUNNING returns
-/// `CARAPACE_EPROTOCOL`. Writes the KCTL once-fields SeqCst, then publishes
+/// `NODINE_EPROTOCOL`. Writes the KCTL once-fields SeqCst, then publishes
 /// `KERNEL_STATE_RUNNING` (write discipline §15.4). Allocates endpoint 0 as
 /// the first process endpoint (pid 1, SYNC|ASYNC|FS_V1) and initializes the
 /// kernel-private heap directory (endpoint 0's block is allocated eagerly).
@@ -604,9 +604,9 @@ unsafe fn block_reset_dynamic(blk: u32) {
 /// and verified by disassembly in P2-003). A parameter value cannot be
 /// folded; the driver passes 0.
 #[no_mangle]
-pub unsafe extern "C" fn carapace_init(generation: u32, now_ms: u64, kctl_base: u32) -> i32 {
+pub unsafe extern "C" fn nodine_init(generation: u32, now_ms: u64, kctl_base: u32) -> i32 {
     if kctl_base != KCTL_OFFSET {
-        return CARAPACE_EINVAL_REQUEST; // the frozen map puts the KCTL at 0
+        return NODINE_EINVAL_REQUEST; // the frozen map puts the KCTL at 0
     }
     // Linear memory must hold at least the fixed ABI map (§5.2): transport
     // pool end = TRANSPORT_BASE + MAX_ENDPOINTS*EP_STRIDE = 0x0505_0000.
@@ -614,10 +614,10 @@ pub unsafe extern "C" fn carapace_init(generation: u32, now_ms: u64, kctl_base: 
     if (mem_pages as u64) * 65_536 < (TRANSPORT_BASE as u64)
         + (MAX_ENDPOINTS as u64) * (EP_STRIDE as u64)
     {
-        return CARAPACE_EINVAL_REQUEST; // KSM too small for the frozen map
+        return NODINE_EINVAL_REQUEST; // KSM too small for the frozen map
     }
     if au32(KCTL_KERNEL_STATE).load(Ordering::SeqCst) != KERNEL_STATE_BOOTING {
-        return CARAPACE_EPROTOCOL; // not BOOTING (double init / stale state)
+        return NODINE_EPROTOCOL; // not BOOTING (double init / stale state)
     }
 
     // Kernel-private heap header + directory FIRST (they live above the
@@ -812,10 +812,10 @@ struct RawRequest {
     a2: u64,
 }
 
-/// Validate a dequeued RequestRecord. Returns `Err(CARAPACE_*)` on violation
+/// Validate a dequeued RequestRecord. Returns `Err(NODINE_*)` on violation
 /// (explicit failure, never UB, never silent). Unknown ops are
-/// `CARAPACE_ENOOP` (§19.2 item 1 — v1.0.2 correction of the P2-003 behavior
-/// which returned CARAPACE_EINVAL_REQUEST); `tx_off` is TX-arena-relative
+/// `NODINE_ENOOP` (§19.2 item 1 — v1.0.2 correction of the P2-003 behavior
+/// which returned NODINE_EINVAL_REQUEST); `tx_off` is TX-arena-relative
 /// (§6.1 — v1.0.2 correction); unused args of implemented ops must be zero
 /// (§19.2 item 3); sync-mode OP_CANCEL is rejected (§29/ADR-0010 D4).
 unsafe fn validate_request(slot: u32, is_sync: bool, ep_base: u32) -> Result<RawRequest, i32> {
@@ -844,15 +844,15 @@ unsafe fn validate_request(slot: u32, is_sync: bool, ep_base: u32) -> Result<Raw
         | OP_RANGE_DIAG_LO..=OP_RANGE_DIAG_HI // v1.0.2 diagnostic range
     );
     if !known {
-        return Err(CARAPACE_ENOOP); // §19.2 item 1 (v1.0.2 correction)
+        return Err(NODINE_ENOOP); // §19.2 item 1 (v1.0.2 correction)
     }
     // §6.1/§8.4: unknown flag bits rejected.
     if flags & !FLAGS_KNOWN_MASK != 0 {
-        return Err(CARAPACE_EINVAL_REQUEST);
+        return Err(NODINE_EINVAL_REQUEST);
     }
     // ADR-0010 D4: OP_CANCEL rides the async lane only.
     if is_sync && op == Op::Cancel as u32 {
-        return Err(CARAPACE_EINVAL_REQUEST);
+        return Err(NODINE_EINVAL_REQUEST);
     }
     // §19.2 item 3: unused args of implemented ops must be zero. The fs
     // surface gained its implementations in P2-005-006 — per-op arg-zero
@@ -894,7 +894,7 @@ unsafe fn validate_request(slot: u32, is_sync: bool, ep_base: u32) -> Result<Raw
         _ => false, // stubs: not enforced (see doc comment)
     };
     if arg_err {
-        return Err(CARAPACE_EINVAL_REQUEST);
+        return Err(NODINE_EINVAL_REQUEST);
     }
     // Transport-probe result length bound (dispatch would also check; do it
     // here so invalid requests never allocate).
@@ -902,21 +902,21 @@ unsafe fn validate_request(slot: u32, is_sync: bool, ep_base: u32) -> Result<Raw
         let len = a0 as u32;
         let max = if is_sync { SYNCRES_SIZE - 64 } else { RX_SIZE - 64 };
         if len > max {
-            return Err(CARAPACE_EINVAL_REQUEST);
+            return Err(NODINE_EINVAL_REQUEST);
         }
     }
     // §19.2 item 4 (mechanism; path content is P2-5 scope): TX bounds +
     // alignment, ARENA-relative (§6.1 — v1.0.2 correction).
     if tx_len > 0 {
         if tx_off & 0x7 != 0 {
-            return Err(CARAPACE_EINVAL_REQUEST);
+            return Err(NODINE_EINVAL_REQUEST);
         }
         if tx_off.saturating_add(tx_len) > TX_SIZE {
-            return Err(CARAPACE_EINVAL_REQUEST);
+            return Err(NODINE_EINVAL_REQUEST);
         }
         // Sync payloads must fit the guaranteed reserve (§11.6 v1.0.1).
         if is_sync && tx_len > TX_SYNC_PAYLOAD_MAX {
-            return Err(CARAPACE_EINVAL_REQUEST);
+            return Err(NODINE_EINVAL_REQUEST);
         }
     }
     // §19.2 item 4 (path content — fs surface live since P2-005-006):
@@ -969,7 +969,7 @@ unsafe fn validate_request(slot: u32, is_sync: bool, ep_base: u32) -> Result<Raw
 }
 
 // ---------------------------------------------------------------------------
-// dispatch (the VFS arrives P2-005; every other op returns CARAPACE_ENOOP)
+// dispatch (the VFS arrives P2-005; every other op returns NODINE_ENOOP)
 // ---------------------------------------------------------------------------
 
 struct Outcome {
@@ -1530,7 +1530,7 @@ unsafe fn dispatch_fs(req: &RawRequest, ep_index: u32, ep_base: u32, blk: u32, i
             }
         }
 
-        _ => Outcome::none(CARAPACE_ENOOP), // unreachable (call-site gated)
+        _ => Outcome::none(NODINE_ENOOP), // unreachable (call-site gated)
     }
 }
 
@@ -1581,7 +1581,7 @@ unsafe fn dispatch(req: &RawRequest) -> Outcome {
             inline_[4..8].copy_from_slice(&KERNEL_CAP_FS_V1.to_le_bytes());
             return Outcome { status: 0, kind: RESULT_INLINE, inline_, len: 16, rx_span: 0, rx_off: 0, sr_len: 0, aborted: false };
         } else {
-            return Outcome::none(CARAPACE_EABI_VERSION);
+            return Outcome::none(NODINE_EABI_VERSION);
         }
     }
     if req.op == Op::CapsQuery as u32 {
@@ -1592,11 +1592,11 @@ unsafe fn dispatch(req: &RawRequest) -> Outcome {
     }
     if req.op == OP_TRANSPORT_PROBE {
         // handled by the caller (needs endpoint context); unreachable here
-        return Outcome::none(CARAPACE_EPROTOCOL);
+        return Outcome::none(NODINE_EPROTOCOL);
     }
     // Every other op — including the whole fs surface — returns the explicit
-    // CARAPACE_ENOOP stub status (§7.3/§7.5). No silent success.
-    Outcome::none(CARAPACE_ENOOP)
+    // NODINE_ENOOP stub status (§7.3/§7.5). No silent success.
+    Outcome::none(NODINE_ENOOP)
 }
 
 // ---------------------------------------------------------------------------
@@ -1757,17 +1757,17 @@ unsafe fn complete_async(
 ///       per-entry-store bug is structurally fixed here).
 ///
 /// `op_budget` bounds the number of requests processed per call (0 =
-/// unbounded): the driver re-pumps while `carapace_pending()` reports work,
+/// unbounded): the driver re-pumps while `nodine_pending()` reports work,
 /// keeping the §5.3 heartbeat fresh under full saturation (F-E1).
 ///
 /// Returns the u64 ASYNC notify mask (bit i = endpoint i produced async
 /// completions this pass → the driver notifies `cr_seq`). Sync completions
-/// are reported via the separate per-pass sync mask (`carapace_sync_mask`,
+/// are reported via the separate per-pass sync mask (`nodine_sync_mask`,
 /// KH word) → the driver notifies `sm_seq` only for those endpoints. This
 /// split prevents sync traffic from spuriously waking async waiter chains.
 /// Kernel-private, never blocks, never waits (§10.5).
 #[no_mangle]
-pub unsafe extern "C" fn carapace_pump(now_ms: u64, op_budget: u32) -> u64 {
+pub unsafe extern "C" fn nodine_pump(now_ms: u64, op_budget: u32) -> u64 {
     au64(KCTL_HEARTBEAT).store(now_ms, Ordering::SeqCst);
 
     if !check_canaries() {
@@ -2193,7 +2193,7 @@ unsafe fn sync_mask_or(ep_index: u32) {
 
 /// Per-pass sync-activity mask (driver-side notify routing).
 #[no_mangle]
-pub unsafe extern "C" fn carapace_sync_mask() -> u64 {
+pub unsafe extern "C" fn nodine_sync_mask() -> u64 {
     read_u64(KH_SYNC_MASK_OFF)
 }
 
@@ -2264,7 +2264,7 @@ unsafe fn process_entry(
         false // DEAD / DRAINING / FREE — never dispatch (AV-FD-01)
     };
     if !dispatchable {
-        let out = Outcome::none(CARAPACE_EENDPOINT);
+        let out = Outcome::none(NODINE_EENDPOINT);
         if is_sync {
             if complete_sync(ep_base, &req, &out) { sync_mask_or(ep_index); }
         } else {
@@ -2301,7 +2301,7 @@ unsafe fn process_entry(
             }
         }
         let out = if !ok {
-            Outcome::none(CARAPACE_EABI_VERSION)
+            Outcome::none(NODINE_EABI_VERSION)
         } else if birth_err != 0 {
             Outcome::none(birth_err)
         } else {
@@ -2483,7 +2483,7 @@ unsafe fn endpoint_drain(ep_index: u32, ep_base: u32, blk: u32, notify_mask: &mu
 
 /// Endpoints with unconsumed or deferred work after the last pump call.
 #[no_mangle]
-pub unsafe extern "C" fn carapace_pending() -> u64 {
+pub unsafe extern "C" fn nodine_pending() -> u64 {
     (read_u32(KH_PENDING_OFF) as u64) | ((read_u32(KH_PENDING_OFF + 4) as u64) << 32)
 }
 
@@ -2492,10 +2492,10 @@ pub unsafe extern "C" fn carapace_pending() -> u64 {
 /// endpoint never inherits state — ADR-0003). Returns the endpoint index or
 /// a negative errno (ENFILE: table full; ENOMEM: kernel heap exhausted).
 #[no_mangle]
-pub unsafe extern "C" fn carapace_alloc_endpoint(pid: u32, caps: u32) -> i32 {
+pub unsafe extern "C" fn nodine_alloc_endpoint(pid: u32, caps: u32) -> i32 {
     let state = au32(KCTL_KERNEL_STATE).load(Ordering::SeqCst);
     if state != KERNEL_STATE_RUNNING {
-        return CARAPACE_ESHUTDOWN;
+        return NODINE_ESHUTDOWN;
     }
     // P2-005-005 (FC-11, AV-FD-11): pid validation — pid 0 is the kernel
     // namespace (reserved for ingress-class endpoints), and a live pid may
@@ -2503,11 +2503,11 @@ pub unsafe extern "C" fn carapace_alloc_endpoint(pid: u32, caps: u32) -> i32 {
     // instead of host trust; ≤64 records — a linear scan is free).
     if (caps & ENDPOINT_CAP_INGRESS) == 0 {
         if pid == 0 {
-            return CARAPACE_EINVAL_REQUEST;
+            return NODINE_EINVAL_REQUEST;
         }
         if let Some(fd) = unsafe { fdstate_mut() } {
             if fd.process_exists(pid) {
-                return CARAPACE_EINVAL_REQUEST; // live pid — never re-issued
+                return NODINE_EINVAL_REQUEST; // live pid — never re-issued
             }
         }
     }
@@ -2557,20 +2557,20 @@ pub unsafe extern "C" fn carapace_alloc_endpoint(pid: u32, caps: u32) -> i32 {
 /// Clean process exit (§21.2): the driver tells the kernel the worker exited
 /// normally (or the OP_PROC_EXIT op path invokes it internally).
 #[no_mangle]
-pub unsafe extern "C" fn carapace_endpoint_exit(ep_index: u32, generation: u32) -> i32 {
+pub unsafe extern "C" fn nodine_endpoint_exit(ep_index: u32, generation: u32) -> i32 {
     if ep_index >= MAX_ENDPOINTS {
-        return CARAPACE_EINVAL_REQUEST;
+        return NODINE_EINVAL_REQUEST;
     }
     let slot = ENDPOINT_TABLE_OFFSET + ep_index * 64;
     let st = au32(slot + EPS_STATE).load(Ordering::SeqCst);
     if st != ENDPOINT_STATE_RUNNING && st != ENDPOINT_STATE_ALLOCATED {
-        return CARAPACE_EENDPOINT;
+        return NODINE_EENDPOINT;
     }
     let ep_base = au32(slot + EPS_EP_BASE).load(Ordering::SeqCst);
     let dir = EPDIR_BASE + ep_index * EPDIR_STRIDE;
     let blk = read_u32(dir + EPD_BLOCK_OFF);
     if blk == 0 {
-        return CARAPACE_EENDPOINT;
+        return NODINE_EENDPOINT;
     }
     // P2-005-005 (FC-2 rider, AV-FD-04): the clean-exit notice now takes a
     // GENERATION — a stale notice after a recycle must never drain (and
@@ -2581,7 +2581,7 @@ pub unsafe extern "C" fn carapace_endpoint_exit(ep_index: u32, generation: u32) 
     // recycled slots (gen >= 2 there).
     let cur_gen = au32(slot + EPS_GENERATION).load(Ordering::SeqCst);
     if generation != 0 && generation != cur_gen {
-        return CARAPACE_EENDPOINT; // stale exit notice
+        return NODINE_EENDPOINT; // stale exit notice
     }
     let mut mask: u64 = 0;
     endpoint_drain(ep_index, ep_base, blk, &mut mask);
@@ -2592,24 +2592,24 @@ pub unsafe extern "C" fn carapace_endpoint_exit(ep_index: u32, generation: u32) 
 /// same reclaim WITHOUT any ring writes ("ECANCELED toward nobody — the
 /// consumer is gone"). A stale notice (generation mismatch) is rejected.
 #[no_mangle]
-pub unsafe extern "C" fn carapace_endpoint_died(ep_index: u32, generation: u32) -> i32 {
+pub unsafe extern "C" fn nodine_endpoint_died(ep_index: u32, generation: u32) -> i32 {
     if ep_index >= MAX_ENDPOINTS {
-        return CARAPACE_EINVAL_REQUEST;
+        return NODINE_EINVAL_REQUEST;
     }
     let slot = ENDPOINT_TABLE_OFFSET + ep_index * 64;
     let st = au32(slot + EPS_STATE).load(Ordering::SeqCst);
     if st != ENDPOINT_STATE_RUNNING && st != ENDPOINT_STATE_ALLOCATED {
-        return CARAPACE_EENDPOINT;
+        return NODINE_EENDPOINT;
     }
     let gen = au32(slot + EPS_GENERATION).load(Ordering::SeqCst);
     if gen != generation {
-        return CARAPACE_EENDPOINT; // stale notice
+        return NODINE_EENDPOINT; // stale notice
     }
     let ep_base = au32(slot + EPS_EP_BASE).load(Ordering::SeqCst);
     let dir = EPDIR_BASE + ep_index * EPDIR_STRIDE;
     let blk = read_u32(dir + EPD_BLOCK_OFF);
     if blk == 0 {
-        return CARAPACE_EENDPOINT;
+        return NODINE_EENDPOINT;
     }
     // P2-005-005 (FC-2): the died path runs the SAME fd/OFD/cwd reclaim as
     // the drain (pid read before the DEAD store; no ring writes — the
@@ -2628,7 +2628,7 @@ pub unsafe extern "C" fn carapace_endpoint_died(ep_index: u32, generation: u32) 
 /// clears) the kernel-private SUSPECT flag; NEVER reclaims — only the host
 /// decides termination (a blocked-but-alive worker cannot answer a ping).
 #[no_mangle]
-pub unsafe extern "C" fn carapace_watchdog(now_ms: u64, threshold_ms: u32) -> u64 {
+pub unsafe extern "C" fn nodine_watchdog(now_ms: u64, threshold_ms: u32) -> u64 {
     let mut mask: u64 = 0;
     let mut i: u32 = 0;
     while i < MAX_ENDPOINTS {
@@ -2663,7 +2663,7 @@ pub unsafe extern "C" fn carapace_watchdog(now_ms: u64, threshold_ms: u32) -> u6
 ///   31 stdio-out drops · 32 stdio-err bytes · 33 stdio-err drops
 ///   34 FD subsystem alive (0/1) · 35 live processes
 #[no_mangle]
-pub unsafe extern "C" fn carapace_diag(ep_index: u32, field: u32) -> i64 {
+pub unsafe extern "C" fn nodine_diag(ep_index: u32, field: u32) -> i64 {
     if field == 0 {
         return ((KH_LAYOUT_VERSION as i64) << 32) | (KH_MAGIC as i64);
     }
@@ -2740,14 +2740,14 @@ pub unsafe extern "C" fn carapace_diag(ep_index: u32, field: u32) -> i64 {
         };
     }
     if ep_index >= MAX_ENDPOINTS {
-        return CARAPACE_EINVAL_REQUEST as i64;
+        return NODINE_EINVAL_REQUEST as i64;
     }
     let slot = ENDPOINT_TABLE_OFFSET + ep_index * 64;
     let ep_base = au32(slot + EPS_EP_BASE).load(Ordering::SeqCst);
     let dir = EPDIR_BASE + ep_index * EPDIR_STRIDE;
     let blk = read_u32(dir + EPD_BLOCK_OFF);
     if blk == 0 {
-        return CARAPACE_EENDPOINT as i64;
+        return NODINE_EENDPOINT as i64;
     }
     match field {
         2 => read_u32(blk + BK_UNRETIRED_OFF) as i64,             // RX unretired bytes
@@ -2771,7 +2771,7 @@ pub unsafe extern "C" fn carapace_diag(ep_index: u32, field: u32) -> i64 {
         }
         13 => read_u64(dir + EPD_DEATHS_OFF) as i64,              // endpoint deaths
         14 => read_u32(dir + EPD_FLAGS_OFF) as i64,               // epdir flags
-        _ => CARAPACE_EINVAL_REQUEST as i64,
+        _ => NODINE_EINVAL_REQUEST as i64,
     }
 }
 
@@ -2780,17 +2780,17 @@ pub unsafe extern "C" fn carapace_diag(ep_index: u32, field: u32) -> i64 {
 // ---------------------------------------------------------------------------
 
 /// Graceful drain (§21.1): set DRAINING, then reject every not-yet-dequeued
-/// request with a `CARAPACE_ESHUTDOWN` completion (best-effort on completion
+/// request with a `NODINE_ESHUTDOWN` completion (best-effort on completion
 /// -ring space — the spec guarantees inline error completions are always
 /// writable, and a full ring's consumer is woken by the driver's final
 /// §16.5 sweep and fails everything bridge-side), complete in-flight work
 /// (none can be in flight on the serialized kernel), then publish STOPPED.
 /// The driver performs the final ≤ MAX_ENDPOINTS×2 notify sweep (§21.1(e)).
 #[no_mangle]
-pub unsafe extern "C" fn carapace_shutdown(now_ms: u64) -> i32 {
+pub unsafe extern "C" fn nodine_shutdown(now_ms: u64) -> i32 {
     let state = au32(KCTL_KERNEL_STATE).load(Ordering::SeqCst);
     if state != KERNEL_STATE_RUNNING {
-        return CARAPACE_EPROTOCOL;
+        return NODINE_EPROTOCOL;
     }
     au32(KCTL_KERNEL_STATE).store(KERNEL_STATE_DRAINING, Ordering::SeqCst);
     au64(KCTL_HEARTBEAT).store(now_ms, Ordering::SeqCst);
@@ -2834,7 +2834,7 @@ pub unsafe extern "C" fn carapace_shutdown(now_ms: u64) -> i32 {
                     let is_sync = read_u32(s + REQ_FLAGS) & FLAG_MODE_SYNC != 0;
                     let req_id = read_u64(s + REQ_REQ_ID);
                     let op = read_u32(s + REQ_OP);
-                    let out = Outcome::none(CARAPACE_ESHUTDOWN);
+                    let out = Outcome::none(NODINE_ESHUTDOWN);
                     if is_sync {
                         if complete_sync(ep_base, &RawRequest {
                             req_id, op, flags: FLAG_MODE_SYNC, tx_off: 0, tx_len: 0, a0: 0, a1: 0, a2: 0,
@@ -2915,7 +2915,7 @@ pub unsafe extern "C" fn carapace_shutdown(now_ms: u64) -> i32 {
 /// FIFO was already dropped-with-counter at write time (never block, never
 /// fail `console.log`).
 #[no_mangle]
-pub unsafe extern "C" fn carapace_stdio_drain(stream: u32, dst_off: u32, cap: u32) -> u32 {
+pub unsafe extern "C" fn nodine_stdio_drain(stream: u32, dst_off: u32, cap: u32) -> u32 {
     let Some(fd) = (unsafe { fdstate_mut() }) else {
         return 0;
     };
@@ -2953,7 +2953,7 @@ pub unsafe extern "C" fn carapace_stdio_drain(stream: u32, dst_off: u32, cap: u3
 /// bridge's async stdin retries). Bounded-drop policy mirrors the output
 /// sinks; returns the number of bytes accepted.
 #[no_mangle]
-pub unsafe extern "C" fn carapace_stdin_feed(src_off: u32, len: u32) -> u32 {
+pub unsafe extern "C" fn nodine_stdin_feed(src_off: u32, len: u32) -> u32 {
     let Some(fd) = (unsafe { fdstate_mut() }) else {
         return 0;
     };

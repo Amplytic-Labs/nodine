@@ -13,7 +13,7 @@ op numbers, doorbells) is specified in [`kernel/KERNEL_ABI.md`](../kernel/KERNEL
 |---|---|
 | `runtime/supervisor.mjs` | `Term` (ANSI emulator), `parseCommandLine`, `Supervisor` (driver RPCs, kfs sync ops, seeding, exec resolution, process tree, relay, signals, shutdown). |
 | `runtime/kernel-driver.js` | Kernel bootstrap worker: `boot`, `alloc-endpoint`, `endpoint-exit`/`endpoint-died`, `shutdown`, `set-step-mode`/`step`, `set-watchdog`, `diag`, plus the supervisor-lane RPCs `kfs-sync` and `stdin-feed`. |
-| `runtime/kernel_core.wasm` | The kernel binary (Rust, wasm32-unknown-unknown; sha256 `2b514dd5dd92bbe9e737747e63719a874471eaff49044360a1c2aca63bd62ce3`). |
+| `runtime/kernel_core.wasm` | The kernel binary (Rust, wasm32-unknown-unknown; sha256 `e193884901491e0432ee30fcb22a4631445e3ce021028299bc90efbdda515cbd`). |
 | `runtime/runtime-worker.mjs` | The process worker: boots the vendored Node.js lib sources, bridges `process`/syscalls onto the kernel endpoint, implements this contract. |
 | `examples/demo/server.mjs` | Minimal COI static server for the demo page (`node examples/demo/server.mjs`). |
 | `test/e2e.cjs` | Browser E2E against the real runtime (boot, fs, spawn, preview, teardown). |
@@ -44,7 +44,7 @@ submit-ring slot write at `ep+0xC0100+(tail&4095)*64` (`REQ_REQ_ID=0,
 REQ_OP=8, REQ_FLAGS=0xc [FLAG_MODE_SYNC], REQ_TX_OFF=0x10, REQ_TX_LEN=0x14,
 REQ_A0=0x18..`, TX at arena offset `0x3E000`, the 8 KiB guaranteed reserve) →
 §10.4 doorbell bump (`Atomics.add+notify` on the u32 @ `0x2000`) →
-`carapace_pump(now, 0)` → completion read from the sync mailbox
+`nodine_pump(now, 0)` → completion read from the sync mailbox
 (`status@0x18, kind@0x1c, len@0x24, inline@0x28`) → SYNCRES payload
 (`TRANSPORT_BASE + 0x80100`, `kind===3`) copied into a plain transferred
 `Uint8Array` → SM_COMPLETED→SM_IDLE retire. `TRANSPORT_BASE = 0x10000`,
@@ -64,11 +64,11 @@ UTF-8, per-stream decoders — the DRAIN PUMP; the terminal mixes both streams
 like a real tty), `{type:'kernel-stopped'}`, `{type:'driver-error', error,
 during}`, `{type:'driver-loop-died', error}`, `{type:'suspect', mask}`.
 
-### 1.2 Page → runtime worker (main worker port) — `carapace-init`
+### 1.2 Page → runtime worker (main worker port) — `nodine-init`
 
 ```js
 {
-  type: 'carapace-init',
+  type: 'nodine-init',
   ksmMemory: <WebAssembly.Memory>,   // the shared KSM (same object every process)
   epIndex: number, generation: number,
   pid: number,                       // EXTRA vs the minimal contract (diagnostics; additive)
@@ -132,7 +132,7 @@ concern (documented limitation).
   Home/End/Delete as xterm ESC sequences, other Ctrl-letters as their byte.
   **Ctrl+C is SIGINT to the whole tree (byte NOT delivered)**; `^C` is echoed.
 - inherit mode → bytes go through driver `stdin-feed` (kernel stdin FIFO at
-  KSM scratch 0x2100, 1 KiB; `carapace_stdin_feed(0x2100, len)`; reads drain,
+  KSM scratch 0x2100, 1 KiB; `nodine_stdin_feed(0x2100, len)`; reads drain,
   EAGAIN when empty). pipe mode → `stdin-bytes` on the channelPort.
 - The prompt returns when the foreground ROOT exits (status line `↳ N`);
   still-running descendants keep running (their inherit output keeps flowing).
@@ -168,7 +168,7 @@ No var expansion, no globbing, no completion.
    `/usr/local/bin/node`} → node-worker with `entry = abs(argv[1])` or `null`
    (bare `node`), `argv0='node'`, `argv = argv.slice(2)`.
 4. Read the first 128 B (OPEN O_RDONLY → READ a1=128 a2=−1 → CLOSE). `#!`
-   interpreter parse (`env -S` aware): `node`, `carapace-node`,
+   interpreter parse (`env -S` aware): `node`, `nodine-node`,
    `/usr/bin/node`, `/usr/local/bin/node`, `/bin/node`, `*/node` → node-worker
    `entry = script path`, `argv0='node'`, `argv = argv.slice(1)`. Any other
    interpreter → `exec format not supported: <line>` → **126**.

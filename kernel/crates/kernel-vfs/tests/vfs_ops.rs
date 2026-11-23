@@ -48,7 +48,7 @@ fn create_write_read_stat_cycle() {
     assert_eq!(st.mode, 0o100644);
     assert_eq!(st.size, 0);
     assert_eq!(st.nlink, 1);
-    wr(&mut v, f, 0, b"Carapace");
+    wr(&mut v, f, 0, b"Nodine");
     let st = v.stat_idx(f).unwrap();
     assert_eq!(st.size, 8);
     assert_eq!(st.blksize, 65536);
@@ -58,7 +58,7 @@ fn create_write_read_stat_cycle() {
     v.close(f).unwrap();
     // Reopen read-only and read back.
     let f2 = v.open(root, b"/data/test.txt", OpenModes::RDONLY, 0, 0, 0).unwrap();
-    assert_eq!(rd(&mut v, f2, 0, 100), b"Carapace".to_vec());
+    assert_eq!(rd(&mut v, f2, 0, 100), b"Nodine".to_vec());
     // Short read at the tail.
     assert_eq!(rd(&mut v, f2, 6, 100), b"ce".to_vec());
     // At/past EOF: 0 bytes, never an error (item 7).

@@ -19,7 +19,7 @@ pub const DEFAULT_INODE_CAP: u32 = 1 << 20;
 
 /// `st_dev`-adjacent filesystem type magic for statfs (documented virtual
 /// semantics — "CRVF").
-pub const CARAPACE_VFS_MAGIC: u64 = 0x4352_5646;
+pub const NODINE_VFS_MAGIC: u64 = 0x4352_5646;
 
 pub const STATFS_BSIZE: u64 = 65_536;
 
@@ -158,7 +158,7 @@ impl VfsAccounting {
         let blocks = self.residency_ceiling / bsize;
         let bfree = self.residency_ceiling.saturating_sub(self.residency()) / bsize;
         StatFsData {
-            f_type: CARAPACE_VFS_MAGIC,
+            f_type: NODINE_VFS_MAGIC,
             f_bsize: bsize,
             f_blocks: blocks,
             f_bfree: bfree,
@@ -217,6 +217,6 @@ mod tests {
         assert_eq!(s.f_bfree, s.f_blocks);
         assert_eq!(s.f_files, 1 << 20);
         assert_eq!(s.f_ffree, 1 << 20);
-        assert_eq!(s.f_type, CARAPACE_VFS_MAGIC);
+        assert_eq!(s.f_type, NODINE_VFS_MAGIC);
     }
 }

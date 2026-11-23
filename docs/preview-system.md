@@ -11,7 +11,7 @@ Three pieces cooperate:
 
 | Piece | Where | Role |
 | --- | --- | --- |
-| Preview gateway | `runtime/sw-opencontainer.js` | Service worker registered at scope `/`. Owns the session/port registry, serves every `/preview/…` fetch, rewrites root-relative subresources. |
+| Preview gateway | `runtime/sw-nodine.js` | Service worker registered at scope `/`. Owns the session/port registry, serves every `/preview/…` fetch, rewrites root-relative subresources. |
 | Session broker | `runtime/supervisor.mjs` (`initPreviewSW`, `onChannelMsg`, `previewPortOpen/Close`) | Holds the session id, forwards per-port channels to the SW, keeps the port → owning-process registry, raises preview events to the page. |
 | Server transport | `runtime/runtime-worker.mjs` (`PortServer`, `listenViaSW`, `onPreviewChanMsg`) | Implements `http.Server.listen()` inside each process worker: registers the port with the SW or dark-listens, then serves each request through a real HTTP/1.1 parser. |
 
@@ -76,7 +76,7 @@ untouched.
    environment check includes `'serviceWorker' in navigator`, and
    registration simply fails on non-secure origins.
 2. **Script URL.** The SW script is resolved relative to the runtime module
-   URL (`sw-opencontainer.js` next to `supervisor.mjs`), not the page base —
+   URL (`sw-nodine.js` next to `supervisor.mjs`), not the page base —
    so the runtime bundle can live in any directory the host serves.
 3. **Registration at scope `/`.** `navigator.serviceWorker.register(swUrl,
    { scope: '/' })`, then `await navigator.serviceWorker.ready`, then a short
@@ -87,7 +87,7 @@ untouched.
    official Vite plugin (`nodine/vite`) sends that header for every file it
    serves from the runtime bundle, so the default `/nodine` path works out of
    the box; on a static host, either serve the bundle at the origin root or
-   add the header for `sw-opencontainer.js`.
+   add the header for `sw-nodine.js`.
 4. **Session claim.** The SW itself installs with `skipWaiting()` and, on
    activate, `clients.claim()`. The SDK then generates
    `sid = crypto.randomUUID()`, creates a `MessageChannel`, hands one end to

@@ -2,7 +2,7 @@
 name = "kernel-vfs"
 version = "0.1.0"
 edition = "2021"
-description = "Carapace kernel VFS core — P2-005 (in-memory filesystem: inode arena, dual-index directories, 2-tier+null content, path resolver). Frozen architecture: docs/phase2/P2_005_VFS_SPEC.md"
+description = "Nodine kernel VFS core — P2-005 (in-memory filesystem: inode arena, dual-index directories, 2-tier+null content, path resolver). Frozen architecture: docs/phase2/P2_005_VFS_SPEC.md"
 license = "MIT OR Apache-2.0"
 
 # NOT a member of the kernel workspace: kernel/Cargo.toml lists this crate

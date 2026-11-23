@@ -120,7 +120,7 @@ function transformModuleSource(acorn, source, url) {
   } catch (e) {
     const err = new SyntaxError(e.message);
     if (e.loc) err.message = e.message; // acorn messages carry "line/column"
-    err.carapaceUrl = url;
+    err.nodineUrl = url;
     throw err;
   }
 
@@ -147,9 +147,9 @@ function transformModuleSource(acorn, source, url) {
       else if (node.type === 'ForOfStatement' && node.await && s.fnDepth === 0) hasTLA = true;
       else if (node.type === 'ThisExpression' && s.thisDepth === 0) { hasTopLevelThis = true; s.reps.push({ start: node.start, end: node.end, text: '(void 0)' }); }
       else if (node.type === 'MetaProperty' && node.meta && node.meta.name === 'import' && node.property && node.property.name === 'meta') {
-        s.reps.push({ start: node.start, end: node.end, text: '\u0000CARAPACE_META' });
+        s.reps.push({ start: node.start, end: node.end, text: '\u0000NODINE_META' });
       } else if (node.type === 'CallExpression' && node.callee && node.callee.type === 'Import') {
-        s.reps.push({ start: node.callee.start, end: node.callee.end, text: '\u0000CARAPACE_DYN' });
+        s.reps.push({ start: node.callee.start, end: node.callee.end, text: '\u0000NODINE_DYN' });
       } else if (node.type === 'Identifier' && node.name === 'arguments' && s.fnDepth === 0 && !s.inShorthandKey) {
         hasTopLevelArguments = true;
       } else if (node.type === 'CallExpression' && node.callee && node.callee.type === 'Identifier' && node.callee.name === 'eval' && s.fnDepth === 0) {
@@ -228,13 +228,13 @@ function transformModuleSource(acorn, source, url) {
           else bodyParts.push(slice(d));
         } else if (d.type === 'FunctionDeclaration' || d.type === 'ClassDeclaration') {
           // anonymous default declaration: not hoisted as a binding
-          defaultLocal = '__carapace_default__';
+          defaultLocal = '__nodine_default__';
           defaultIsDeclName = false;
-          bodyParts.push('__carapace_default__ = ' + slice(d));
+          bodyParts.push('__nodine_default__ = ' + slice(d));
         } else {
-          defaultLocal = '__carapace_default__';
+          defaultLocal = '__nodine_default__';
           defaultIsDeclName = false;
-          bodyParts.push('__carapace_default__ = (' + slice(d) + ')');
+          bodyParts.push('__nodine_default__ = (' + slice(d) + ')');
         }
         break;
       }
@@ -307,7 +307,7 @@ function pickMachineryNames(desc) {
 function buildFactorySource(desc) {
   const M = pickMachineryNames(desc);
   const R = M.req, FN = M.fn, DN = M.dn, META = M.meta, NS = M.ns, MV = M.mv, IP = M.ip, DYN = M.dyn;
-  const DEF = '__carapace_default__';
+  const DEF = '__nodine_default__';
   const async = desc.hasTLA ? 'async ' : '';
   const awaitOf = desc.hasTLA ? 'await ' : '';
 
@@ -384,8 +384,8 @@ function buildFactorySource(desc) {
 
   src += `}\n`;
   // Rewrite the placeholder tokens produced by the AST walker.
-  src = src.split('\u0000CARAPACE_META').join(META);
-  src = src.split('\u0000CARAPACE_DYN').join(DYN);
+  src = src.split('\u0000NODINE_META').join(META);
+  src = src.split('\u0000NODINE_DYN').join(DYN);
   return { source: src, names: M };
 }
 
@@ -755,7 +755,7 @@ export function createModuleWrapBinding(acorn, host) {
     // module_wrap.cc:1554-1601 — the fixed facade source, evaluated through
     // the same synchronous machinery against the passed wrap.
     const source = "export * from 'original';\nexport { default } from 'original';\nexport const __esModule = true;\n";
-    const facade = new ModuleWrap(`${wrap.url} (carapace facade)`, undefined, source, 0, 0, null);
+    const facade = new ModuleWrap(`${wrap.url} (nodine facade)`, undefined, source, 0, 0, null);
     facade.link(facade.getModuleRequests().map(() => wrap));
     facade.instantiate();
     return facade.evaluateSync();

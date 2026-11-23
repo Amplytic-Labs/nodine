@@ -620,14 +620,14 @@ fn t_fd_25_stdin_bounded_drop() {
 // two processes are live lands in BOTH processes' private FIFOs; one process
 // draining its copy (the zombie-parent scenario: npx's leftover readline poll
 // racing create-expo-app's prompt) cannot steal the other's bytes. Root cause
-// observed live in the Expo golden flow: 'CarapaceExpoGolden' arrived as
+// observed live in the Expo golden flow: 'NodineExpoGolden' arrived as
 // 'racexn' and Enter was eaten entirely → 20-minute hang at the name prompt.
 #[test]
 fn t_fd_43_stdin_per_process_fanout() {
     let (mut st, mut vfs) = boot();
     birth(&mut st, &mut vfs, 1);
     birth(&mut st, &mut vfs, 2);
-    st.stdin_feed(b"CarapaceExpoGolden\n");
+    st.stdin_feed(b"NodineExpoGolden\n");
     // pid 1 drains EVERYTHING (the zombie reader steals all it can)…
     let mut stolen = Vec::new();
     loop {
@@ -638,7 +638,7 @@ fn t_fd_43_stdin_per_process_fanout() {
             Err(e) => panic!("unexpected {e:?}"),
         }
     }
-    assert_eq!(stolen, b"CarapaceExpoGolden\n".to_vec(), "pid 1 got its copy");
+    assert_eq!(stolen, b"NodineExpoGolden\n".to_vec(), "pid 1 got its copy");
     // …and pid 2 STILL sees the complete input — no theft across processes.
     let mut seen = Vec::new();
     loop {
@@ -649,7 +649,7 @@ fn t_fd_43_stdin_per_process_fanout() {
             Err(e) => panic!("unexpected {e:?}"),
         }
     }
-    assert_eq!(seen, b"CarapaceExpoGolden\n".to_vec(), "pid 2 unaffected by pid 1's drain");
+    assert_eq!(seen, b"NodineExpoGolden\n".to_vec(), "pid 2 unaffected by pid 1's drain");
     // A process born AFTER the feed has an empty FIFO (it was not there).
     birth(&mut st, &mut vfs, 3);
     let mut buf = [0u8; 8];

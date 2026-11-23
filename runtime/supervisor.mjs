@@ -360,7 +360,7 @@ export class Supervisor {
     // B7 WARM POOL: pre-spawned IDLE runtime workers. The worker's module
     // top (libsources parse via the supervisor handoff, uvmap fetch,
     // binding factories) is PROCESS-INDEPENDENT — it parks at
-    // `await initPromise` until a carapace-init arrives. A pooled spawn
+    // `await initPromise` until a nodine-init arrives. A pooled spawn
     // skips the module parse + libsources clone + top-level boot entirely:
     // only transportAttach + PROC_READY + entry remain. Refill is DEFERRED
     // (idle callback / 2 s) so a burst of spawns never pays pool refill on
@@ -400,7 +400,7 @@ export class Supervisor {
     // gets a dedicated channel to the SW; the registry maps port → owning
     // proc for cleanup + events (Amplify's PreviewsStore equivalent).
     this.previewSid = null;      // page session id
-    this.previewSW = null;       // port toward sw-opencontainer.js
+    this.previewSW = null;       // port toward sw-nodine.js
     this.previewPorts = new Map(); // port -> { pid, argv }
     this.onPreviewEvent = null;  // page hook: ({kind:'open'|'close', port, pid, argv})
     // M1.5 page hook: preview-error messages forwarded by the SW (captured
@@ -991,7 +991,7 @@ export class Supervisor {
       if (t[1] === '-S') t = t.slice(2); else t = t.slice(1);
     }
     const exe = t[0] || '';
-    return exe === 'node' || exe === 'carapace-node' ||
+    return exe === 'node' || exe === 'nodine-node' ||
       exe === '/usr/bin/node' || exe === '/usr/local/bin/node' || exe === '/bin/node' ||
       exe.endsWith('/node');
   }
@@ -1056,7 +1056,7 @@ export class Supervisor {
     worker.onmessage = (ev) => this.onWorkerMsg(proc, ev.data);
     worker.onerror = (ev) => this.onWorkerError(proc, ev);
     port1.onmessage = (ev) => this.onChannelMsg(proc, ev.data, ev);
-    // FROZEN carapace-init (README §1.2): argv = REST ARGS AFTER entry;
+    // FROZEN nodine-init (README §1.2): argv = REST ARGS AFTER entry;
     // the worker builds process.argv = [argv0, ...(entry?[entry]:[]), ...argv].
     // B1-PREVIEW: when the page set up the preview bridge, every spawned
     // worker gets its own channel to the preview SW (a fresh MessagePort
@@ -1078,7 +1078,7 @@ export class Supervisor {
         initTransfer.push(swc.port1);
       }
     worker.postMessage({
-      type: 'carapace-init',
+      type: 'nodine-init',
       ksmMemory: this.ksm,
       epIndex: ep.index,
       generation: ep.generation,
@@ -1129,7 +1129,7 @@ export class Supervisor {
   // -- B7 warm pool -----------------------------------------------------------------
   // Warm workers sit at `await initPromise` with their module top evaluated
   // (libsources parsed from the supervisor handoff, uvmap fetched, platform
-  // captures taken). Adopting one costs ONLY the carapace-init post; the
+  // captures taken). Adopting one costs ONLY the nodine-init post; the
   // worker then resumes at main() → transportAttach → PROC_READY → entry.
   warmCreate() {
     const w = new Worker(WORKER_URL, { type: 'module' });
@@ -1342,7 +1342,7 @@ export class Supervisor {
   // WHOLE-SPAWN, so a grandchild handed its parent's REAL stdin (fd 0
   // inherit) had its fd 0 piped instead — create-expo's prompt read an
   // empty pipe while terminal keystrokes sat in the kernel FIFO
-  // (observed live: 'CarapaceExpoGolden' → 'apden' → dead prompt).
+  // (observed live: 'NodineExpoGolden' → 'apden' → dead prompt).
   mapStdioPerFd(stdio) {
     if (typeof stdio === 'string') return [stdio, stdio, stdio];
     if (Array.isArray(stdio)) {
@@ -1555,10 +1555,10 @@ export class Supervisor {
     }
     // P2-006-008: SERIALIZE stdin-feeds through a chain. The driver's handler
     // copies bytes into the SAME kernel scratch (0x2100) then calls
-    // carapace_stdin_feed — the RPC reply means "posted to the kernel", but
+    // nodine_stdin_feed — the RPC reply means "posted to the kernel", but
     // concurrent feeds (keydown bursts: 30-90 ms typing) interleave scratch
     // writes inside the driver's message loop before the kernel copies them,
-    // and whole keystrokes vanish (observed live: 'CarapaceExpoGolden' →
+    // and whole keystrokes vanish (observed live: 'NodineExpoGolden' →
     // 'eExpGold', fixed only by 250 ms delays). One at a time, each awaiting
     // its reply, preserves every keystroke at full typing speed.
     const prev = this._stdinChain || Promise.resolve();
@@ -1598,7 +1598,7 @@ export class Supervisor {
   }
 
   // -- B1-PREVIEW: the browser preview bridge ---------------------------------
-  // Called by the page after sw-opencontainer.js is registered and active.
+  // Called by the page after sw-nodine.js is registered and active.
   // swPort: a MessagePort whose partner the SW holds (forwarded through
   // navigator.serviceWorker.controller). Every runtime worker spawned after
   initPreviewSW(sid, swPort) {

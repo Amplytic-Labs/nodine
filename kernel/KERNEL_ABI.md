@@ -19,7 +19,7 @@ Artifact class: **Phase 2 architecture specification — FROZEN (P2-002), minor-
 > (T1 PASS after mock fixes; T2 shows the old text's failure mode; T4
 > arithmetic resolved).
 
-This document specifies the single binary kernel ABI of Carapace: the shared-memory
+This document specifies the single binary kernel ABI of Nodine: the shared-memory
 interface between the Node.js runtime workers (via the binding bridge) and the
 Rust/WASM kernel worker. It is written to be implementable by a third engineer
 without further questions. The Rust ABI-definition artifact in §24 is the normative
@@ -69,7 +69,7 @@ re-run identical on 18/18 verdicts — `docs/phase1/BROWSER_EXECUTION.md`).
 
 ## 1. Overview, goals, non-goals
 
-Carapace executes upstream, unmodified Node.js v26.13.0 inside Chromium Dedicated
+Nodine executes upstream, unmodified Node.js v26.13.0 inside Chromium Dedicated
 Workers (`docs/REPORT_PHASE1.md` §1). Phase 2 replaces the Phase 1 JavaScript
 in-worker VFS seam (`poc/p1-poc/worker.mjs` — the 39-binding PoC) with a real
 Rust kernel compiled to `wasm32-unknown-unknown`, running inside its own Dedicated
@@ -106,7 +106,7 @@ binary ABI over one shared memory, with exactly two endpoint classes:
    it monopolizes a CPU — rejected as policy; phase a, both sides block in
    `Atomics.wait`, is the canonical discipline).
 4. No fallback paths. Fixed capacities, explicit errors, fail-fast on missing
-   capabilities (`ERR_CARAPACE_UNSUPPORTED_ENVIRONMENT` — 14-check gate, P1-C2 §5).
+   capabilities (`ERR_NODINE_UNSUPPORTED_ENVIRONMENT` — 14-check gate, P1-C2 §5).
 5. Mismatched ABI version, unknown op id, out-of-range offsets, wrong-direction
    access → explicit error completion, never UB, never silent corruption.
 6. The main thread and the Service Worker never call `Atomics.wait`
@@ -132,7 +132,7 @@ document defines the kernel side beneath it.
 | Term | Definition |
 |---|---|
 | **KSM** | Kernel Shared Memory: one shared `WebAssembly.Memory` (`{shared:true}`) whose `.buffer` is a `SharedArrayBuffer`. Created once by the kernel worker at boot. Contains the ABI control block, endpoint table, doorbells, per-process transport regions, and the kernel heap. |
-| **Kernel worker** | The single Dedicated Worker that instantiates `carapace-kernel.wasm` (Rust, `wasm32-unknown-unknown`) over the KSM and runs the kernel event loop. |
+| **Kernel worker** | The single Dedicated Worker that instantiates `nodine-kernel.wasm` (Rust, `wasm32-unknown-unknown`) over the KSM and runs the kernel event loop. |
 | **Runtime worker / process worker** | A Dedicated Worker hosting exactly one Node.js runtime instance = one kernel process (ADR-0003). |
 | **Bridge** | The Rust/WASM binding-bridge module running inside a runtime worker; it translates Node internalBinding calls into ABI requests. |
 | **Process** | Kernel state: pid, argv, env, cwd, fd table, exit code, parentage (ADR-0003). |
@@ -279,7 +279,7 @@ VERIFIED). All agents that hold the KSM are inside one agent cluster
 little-endian by specification; all engines implementing shared wasm memory are
 LE). A boot-time self-check writes `u64 0x0102030405060708` into a scratch word
 and verifies the byte order; mismatch aborts with
-`ERR_CARAPACE_UNSUPPORTED_ENVIRONMENT` (explicit failure, never silent).
+`ERR_NODINE_UNSUPPORTED_ENVIRONMENT` (explicit failure, never silent).
 
 **Alignment:** every multi-byte field, record, and sub-region is 8-byte aligned.
 Rationale: (a) WebAssembly atomic instructions trap on non-naturally-aligned
@@ -371,7 +371,7 @@ is live.
 The kernel writes a slot with SeqCst stores ending with `state` (the release
 field); the bridge acquire-loads `state`, then the rest. A bridge whose endpoint
 slot shows `state ≠ RUNNING` or a `generation` mismatch fails fast with
-`ERR_CARAPACE_ENDPOINT_STATE` (§14.4).
+`ERR_NODINE_ENDPOINT_STATE` (§14.4).
 
 ### 5.5 Endpoint region (per process; base = `transport_base + endpoint_index × EP_STRIDE`)
 
@@ -477,7 +477,7 @@ Argument encoding conventions (per-op table in §7 fixes the meaning):
 |---|---|---|---|---|
 | `+0x00` | 8 | u64 | `req_id` | identifies the completed request (§8.1); for unsolicited event completions: the watch id (§7 stubs) |
 | `+0x08` | 4 | u32 | `op` | echo of the request's op (validation/diagnostics) |
-| `+0x0C` | 4 | i32 | `status` | `0` = success; `< 0` = error (uv errno or `CARAPACE_*`, §14) |
+| `+0x0C` | 4 | i32 | `status` | `0` = success; `< 0` = error (uv errno or `NODINE_*`, §14) |
 | `+0x10` | 4 | u32 | `result_kind` | `0=NONE, 1=INLINE, 2=RX_ARENA, 3=SYNCRES` (§6.4) |
 | `+0x14` | 4 | u32 | `result_len` | payload bytes (0 for `NONE`; ≤ 16 for `INLINE`) |
 | `+0x18` | 4 | u32 | `result_off` | offset within the named area (8-aligned) |
@@ -539,14 +539,14 @@ size is unknown — VERIFIED).
 ## 7. Operation table
 
 Op ids are u32, stable within an ABI major version (§20.3). "Args" lists only the
-used fields; unused fields MUST be 0 (else `CARAPACE_EINVAL_REQUEST`). Every op is
+used fields; unused fields MUST be 0 (else `NODINE_EINVAL_REQUEST`). Every op is
 legal in both modes unless noted; mode changes only completion delivery.
 
 ### 7.1 Control & capability
 
 | Op (hex) | Name | Args | Result | Semantics |
 |---|---|---|---|---|
-| `0x0001` | `OP_ABI_PROBE` | `a0` = bridge `abi_version` | INLINE u64 `[0]=kernel abi_version, [8]=kernel_caps` | No side effects. Kernel completes with `status=0` iff `a0.major == kernel.major` and `kernel.minor ≥ a0.minor`; else `status=CARAPACE_EABI_VERSION`. Used at endpoint bring-up and after any suspected kernel restart (§21.3). |
+| `0x0001` | `OP_ABI_PROBE` | `a0` = bridge `abi_version` | INLINE u64 `[0]=kernel abi_version, [8]=kernel_caps` | No side effects. Kernel completes with `status=0` iff `a0.major == kernel.major` and `kernel.minor ≥ a0.minor`; else `status=NODINE_EABI_VERSION`. Used at endpoint bring-up and after any suspected kernel restart (§21.3). |
 | `0x0002` | `OP_CAPS_QUERY` | — | INLINE u64 `[0]=kernel_caps` (§20.1) | Returns the capability bitmap. |
 
 ### 7.2 Process lifecycle (stubs where marked)
@@ -555,7 +555,7 @@ legal in both modes unless noted; mode changes only completion delivery.
 |---|---|---|---|---|
 | `0x0010` | `OP_PROC_READY` | `a0` = bridge `abi_version`, `a1` = bridge flags (0) | status | Bridge → kernel at endpoint bring-up (async). Kernel transitions the endpoint `ALLOCATED → RUNNING`. Version re-checked as in `OP_ABI_PROBE`. |
 | `0x0011` | `OP_PROC_EXIT` | `a0` = exit code (i64) | status | Bridge → kernel on process exit (async). Kernel drains this endpoint (§21.2), reclaims all fds/OFDs of the pid, transitions the endpoint to `DEAD`, and notifies the host control plane for worker recycling. |
-| `0x0012` | `OP_PROC_SPAWN` | *reserved* (0) | — | **Stub.** Reserved for Phase 3 `child_process`; submitting it in v1.0 returns `CARAPACE_ENOOP`. |
+| `0x0012` | `OP_PROC_SPAWN` | *reserved* (0) | — | **Stub.** Reserved for Phase 3 `child_process`; submitting it in v1.0 returns `NODINE_ENOOP`. |
 | `0x0013` | `OP_PROC_KILL` | `a0` = pid, `a1` = signal | status | **Stub** (Phase 3). |
 | `0x0014` | `OP_PROC_WAIT` | `a0` = pid | — | **Stub** (Phase 3). |
 
@@ -581,8 +581,8 @@ string flags to these — `vendor/.../lib/internal/fs/utils.js:807-848`).
 | `0x0109` | `OP_UNLINK` | `PATH` | NONE | Remove file. `ENOENT`. Open fds keep the file alive (OFD holds a vnode ref — POSIX unlink-while-open). |
 | `0x010A` | `OP_RENAME` | `PATH2` (`old\0new`) | NONE | Rename; `ENOENT/ENOTEMPTY/EISDIR/ENOTDIR` per POSIX. |
 | `0x010B` | `OP_READDIR` | `PATH`; `a0` = cookie (u64, 0 = start), `a1` = `max_entries`, `a2` = `max_bytes` | AREA: batch (below) | Stateless directory iteration: returns up to `max_entries` entries / `max_bytes` payload bytes starting at `cookie`, plus the next cookie. `max_bytes ≤ RX_SIZE−64` / `≤ SYNCRES_SIZE−64`. The cookie is an opaque u64 (v1.0.2: dentry sequence number — erratum P2-005-003; opacity is part of the contract). End of directory: batch with `count = 0`. |
-| `0x010C` | `OP_FTRUNCATE` | `a0` = fd, `a1` = len | NONE | **Stub** — reserved (P2-005 optional); `CARAPACE_ENOOP` in v1.0. |
-| `0x010D` | `OP_ACCESS` | `PATH`; `a0` = mode | NONE | **Stub** — reserved; `CARAPACE_ENOOP` in v1.0. |
+| `0x010C` | `OP_FTRUNCATE` | `a0` = fd, `a1` = len | NONE | **Stub** — reserved (P2-005 optional); `NODINE_ENOOP` in v1.0. |
+| `0x010D` | `OP_ACCESS` | `PATH`; `a0` = mode | NONE | **Stub** — reserved; `NODINE_ENOOP` in v1.0. |
 
 **Stat result encoding (144 B = 18 × f64, or 18 × i64 with `FLAG_STAT_BIGINT`)**
 — field order is exactly Node's `getStatsFromBinding` (VERIFIED
@@ -619,7 +619,7 @@ batch to keep every batch 8-aligned from the area base.)
 
 | Op | Name | Args | Result | Semantics |
 |---|---|---|---|---|
-| `0x0110` | `OP_WATCH_START` | `PATH`; `a0` = flags | INLINE u64 watch_id | **Stub** — reserved (P2-005+). Events, when implemented, are unsolicited `CompletionRecord`s with `cflags.EVENT=1`, `req_id = watch_id`, `op = OP_WATCH_EVENT` (`0x0112`, reserved). `CARAPACE_ENOOP` in v1.0. |
+| `0x0110` | `OP_WATCH_START` | `PATH`; `a0` = flags | INLINE u64 watch_id | **Stub** — reserved (P2-005+). Events, when implemented, are unsolicited `CompletionRecord`s with `cflags.EVENT=1`, `req_id = watch_id`, `op = OP_WATCH_EVENT` (`0x0112`, reserved). `NODINE_ENOOP` in v1.0. |
 | `0x0111` | `OP_WATCH_STOP` | `a0` = watch_id | NONE | **Stub**. |
 | `0x00F0` | `OP_CANCEL` | `a0` = req_id | status | Best-effort cancellation (§18). Async mode only. |
 
@@ -726,7 +726,7 @@ fetch** (replacing the spike's posted-VFS-copy evidence).
 |---|---|---|---|
 | 0 | `0x0000_0001` | `FLAG_MODE_SYNC` | Endpoint class 1 (§11). 0 = class 2 (§12). |
 | 1 | `0x0000_0002` | `FLAG_STAT_BIGINT` | `OP_STAT/LSTAT/FSTAT`: result is 18 × i64 instead of 18 × f64. |
-| 2–31 | — | reserved | MUST be 0. Any set bit → `CARAPACE_EINVAL_REQUEST` (forward-compat is by version, not by unknown-flag tolerance — §20.3). |
+| 2–31 | — | reserved | MUST be 0. Any set bit → `NODINE_EINVAL_REQUEST` (forward-compat is by version, not by unknown-flag tolerance — §20.3). |
 
 ### 8.5 ABI version
 
@@ -913,7 +913,7 @@ is proved in §15.5.
 ### 10.5 Kernel wait discipline (the kernel worker's event loop)
 
 The kernel is driven by its worker's JS loop; the wasm kernel export
-`carapace_kernel_pump()` is **non-blocking and never waits** (no
+`nodine_kernel_pump()` is **non-blocking and never waits** (no
 `memory.atomic.wait` inside kernel code — this keeps the kernel worker's JS
 thread free to service the control plane and the SW bridge between passes, §13).
 The loop:
@@ -934,9 +934,9 @@ loop forever:
 ```
 
 ADR-0011 (2026-11-10) — reference-driver notify routing (informational; the masks
-are kernel-heap-internal, never bridge-visible): `carapace_pump` returns the
+are kernel-heap-internal, never bridge-visible): `nodine_pump` returns the
 ASYNC-only notify mask; a second per-pass sync-activity mask (KH word, exported
-via `carapace_sync_mask()`) marks endpoints that completed MODE_SYNC work. After
+via `nodine_sync_mask()`) marks endpoints that completed MODE_SYNC work. After
 each pass the driver notifies `sm_seq[i]` for sync-mask bits and `cr_seq[i]` for
 async-mask bits — a sync completion never spurious-wakes an async waiter chain.
 The §16.5 shutdown sweep (both words, every endpoint) is unchanged. Bridges'
@@ -1031,9 +1031,9 @@ total budget: SYNC_TOTAL_TIMEOUT_MS = 10_000
 per rung:
     r = Atomics.wait(sm_seq_view, 0, c, rung)
     if kernel_heartbeat_ms age > KERNEL_DEATH_MS (1000): → abandon, §11.5
-       surfaced error: ERR_CARAPACE_KERNEL_DEAD
-    if kernel_state ∈ {DRAINING, STOPPED}: → abandon; ERR_CARAPACE_KERNEL_SHUTDOWN
-    if elapsed ≥ SYNC_TOTAL_TIMEOUT_MS:     → abandon; ERR_CARAPACE_KERNEL_TIMEOUT
+       surfaced error: ERR_NODINE_KERNEL_DEAD
+    if kernel_state ∈ {DRAINING, STOPPED}: → abandon; ERR_NODINE_KERNEL_SHUTDOWN
+    if elapsed ≥ SYNC_TOTAL_TIMEOUT_MS:     → abandon; ERR_NODINE_KERNEL_TIMEOUT
     if r == "ok" or "not-equal": re-check sm_state (§11.4) — usually COMPLETED
 ```
 
@@ -1051,7 +1051,7 @@ no OPFS, no network) and MUST complete in < 10 ms p99 on the serialized kernel
 traversal or an ≤ 8128 B arena copy). Ops that could exceed this bound
 (bulk/batch/fused/persistent) are async-class or chunked by definition.
 `KERNEL_DEATH_MS` = 1000 ms therefore carries a ≥ 100× margin over any legal
-sync op; a false `ERR_CARAPACE_KERNEL_DEAD` from heartbeat starvation is
+sync op; a false `ERR_NODINE_KERNEL_DEAD` from heartbeat starvation is
 impossible for conforming kernels, and a kernel blocking a sync op past the
 budget is a kernel bug (P2-004 includes a T3-style regression test).
 
@@ -1329,31 +1329,31 @@ discipline):
 |---|---|---|
 | `0` | — | success |
 | `-1 … -4095` | **libuv errno (Linux table)** | filesystem/process errors with a uv/POSIX analog — values are EXACTLY the vendored table (Appendix A; `poc/p1-poc/uv-errno-linux.txt`, generated from Node v26.13.0's uv headers) |
-| `-0x1000_0000 … -0x1000_00FF` | **`CARAPACE_*`** | kernel-protocol / kernel-health errors with **no** uv analog |
+| `-0x1000_0000 … -0x1000_00FF` | **`NODINE_*`** | kernel-protocol / kernel-health errors with **no** uv analog |
 
 **Principle:** the kernel returns a uv errno whenever one exists (including
 `ENOMEM` for kernel-heap exhaustion, `EMFILE/ENFILE` for fd/table exhaustion,
-`ECANCELED` (−125) for cancellations). `CARAPACE_*` codes exist only for
+`ECANCELED` (−125) for cancellations). `NODINE_*` codes exist only for
 conditions real kernels never surface to `fs()` — protocol violations and
 kernel-health events. There is no third namespace and no positive-status
 encoding.
 
-### 14.2 `CARAPACE_*` codes (Rust: §24.3)
+### 14.2 `NODINE_*` codes (Rust: §24.3)
 
 | Code | Value | Meaning | Surfaced to Node as |
 |---|---|---|---|
-| `CARAPACE_EINVAL_REQUEST` | `-0x1000_0000` | malformed request: unknown flag bit, non-zero unused arg, bad arg encoding | `ERR_CARAPACE_PROTOCOL` (async; a bug in the bridge) — sync: same, thrown |
-| `CARAPACE_ENOOP` | `-0x1000_0001` | op id not defined in this ABI version / stub op | `ERR_CARAPACE_PROTOCOL` (bridge mapped a Node call to a stub — a version-skew bug) or `ENOSYS` where the bridge deliberately probes |
-| `CARAPACE_EABI_VERSION` | `-0x1000_0002` | probe/version mismatch | `ERR_CARAPACE_ABI_VERSION` (fatal at bring-up, §20) |
-| `CARAPACE_ESHUTDOWN` | `-0x1000_0003` | request submitted while `kernel_state ∈ {DRAINING, STOPPED}` | `ERR_CARAPACE_KERNEL_SHUTDOWN` |
-| `CARAPACE_ETIMEOUT` | `-0x1000_0004` | sync ladder exhausted (bridge-side; also used if the kernel ever enforces op deadlines) | `ERR_CARAPACE_KERNEL_TIMEOUT` |
-| `CARAPACE_EKERNEL_DEAD` | `-0x1000_0005` | heartbeat lost (bridge-side diagnosis) | `ERR_CARAPACE_KERNEL_DEAD` |
-| `CARAPACE_EENDPOINT` | `-0x1000_0006` | endpoint state/generation invalid | `ERR_CARAPACE_ENDPOINT_STATE` |
-| `CARAPACE_EPROTOCOL` | `-0x1000_0007` | direction/kind/consistency violation (e.g. `sm_kind = RX_ARENA`) | `ERR_CARAPACE_PROTOCOL` |
-| `CARAPACE_EBADCORRELATION` | `-0x1000_0008` | completion for an id the kernel does not owe (internal invariant; defensive) | `ERR_CARAPACE_PROTOCOL` |
+| `NODINE_EINVAL_REQUEST` | `-0x1000_0000` | malformed request: unknown flag bit, non-zero unused arg, bad arg encoding | `ERR_NODINE_PROTOCOL` (async; a bug in the bridge) — sync: same, thrown |
+| `NODINE_ENOOP` | `-0x1000_0001` | op id not defined in this ABI version / stub op | `ERR_NODINE_PROTOCOL` (bridge mapped a Node call to a stub — a version-skew bug) or `ENOSYS` where the bridge deliberately probes |
+| `NODINE_EABI_VERSION` | `-0x1000_0002` | probe/version mismatch | `ERR_NODINE_ABI_VERSION` (fatal at bring-up, §20) |
+| `NODINE_ESHUTDOWN` | `-0x1000_0003` | request submitted while `kernel_state ∈ {DRAINING, STOPPED}` | `ERR_NODINE_KERNEL_SHUTDOWN` |
+| `NODINE_ETIMEOUT` | `-0x1000_0004` | sync ladder exhausted (bridge-side; also used if the kernel ever enforces op deadlines) | `ERR_NODINE_KERNEL_TIMEOUT` |
+| `NODINE_EKERNEL_DEAD` | `-0x1000_0005` | heartbeat lost (bridge-side diagnosis) | `ERR_NODINE_KERNEL_DEAD` |
+| `NODINE_EENDPOINT` | `-0x1000_0006` | endpoint state/generation invalid | `ERR_NODINE_ENDPOINT_STATE` |
+| `NODINE_EPROTOCOL` | `-0x1000_0007` | direction/kind/consistency violation (e.g. `sm_kind = RX_ARENA`) | `ERR_NODINE_PROTOCOL` |
+| `NODINE_EBADCORRELATION` | `-0x1000_0008` | completion for an id the kernel does not owe (internal invariant; defensive) | `ERR_NODINE_PROTOCOL` |
 
-These are Carapace-internal error **codes** surfaced as Node `Error` objects with
-`code: 'ERR_CARAPACE_*'` (upper-case, Node internal-code style). They are never
+These are Nodine-internal error **codes** surfaced as Node `Error` objects with
+`code: 'ERR_NODINE_*'` (upper-case, Node internal-code style). They are never
 produced by a healthy system and always indicate bridge/kernel bugs or kernel
 death — which is why they do not participate in the uv mapping.
 
@@ -1409,7 +1409,7 @@ of them; the bridge maps by table lookup (PoC `codeForUv`, `worker.mjs:1861-1864
 ### 14.5 `EAGAIN` semantics vs real Node (honest divergence)
 
 Real Node queues unbounded async fs requests (libuv thread-pool queue) and never
-returns `EAGAIN` from fs promises. Carapace bounds every queue (directive §8:
+returns `EAGAIN` from fs promises. Nodine bounds every queue (directive §8:
 "No unbounded queues. Backpressure is mandatory"): per endpoint ≤ 4096 in-ring +
 ≤ `BRIDGE_QUEUE_MAX` (default 65536, §17.3) bridge-queued async ops. When both
 are exhausted, `fs.promises`/callback APIs surface `EAGAIN` rejections. This is a
@@ -1626,9 +1626,9 @@ Graceful shutdown (§21.1): the kernel sets `kernel_state = DRAINING|STOPPED`
 ≤ `MAX_ENDPOINTS`×2 sweep of `Atomics.notify`). Every W1 waiter is inside
 `Atomics.wait` on exactly `sm_seq` ⇒ wakes (notify or not-equal) ⇒ its rung
 handler loads `kernel_state` ⇒ observes shutdown ⇒ abandons (§11.5) and errors
-with `ERR_CARAPACE_KERNEL_SHUTDOWN`. Every W3 waiter's `waitAsync` promise
+with `ERR_NODINE_KERNEL_SHUTDOWN`. Every W3 waiter's `waitAsync` promise
 resolves ⇒ drain loop observes `kernel_state` ⇒ fails pending ops with
-`CARAPACE_ESHUTDOWN` completions already written by the kernel for in-flight
+`NODINE_ESHUTDOWN` completions already written by the kernel for in-flight
 requests (§21.1). The kernel worker itself exits W2 by its own state check. No
 agent remains blocked on a stopped kernel. ∎
 
@@ -1661,7 +1661,7 @@ impossible** for a conforming bridge (payloads within the §11.6 cap; v1.0.1):
 | Result space | sync-result area (256 KiB) is single-occupancy and always empty (§9.4) | `SYNCRES_SIZE = 0x4_0000` |
 
 If a sync submit nevertheless finds the mailbox non-IDLE or the reserve consumed
-(a bridge bug), the bridge surfaces `CARAPACE_EPROTOCOL` diagnostics — the
+(a bridge bug), the bridge surfaces `NODINE_EPROTOCOL` diagnostics — the
 kernel never blocks the sync producer. The task's allowance "for sync class the
 producer may block-with-timeout" is **not needed and deliberately not used for
 space**: the sync producer's only wait is the completion ladder (§11.3), which is
@@ -1733,7 +1733,7 @@ race-tolerant.
   outstanding-table removal is the linearization point.
 - **No stale completions:** a canceled request's ECANCELED completion carries the
   request's own `req_id`; the bridge's outstanding table consumes it; any later
-  duplicate (kernel bug) is dropped with `ERR_CARAPACE_PROTOCOL` diagnostics
+  duplicate (kernel bug) is dropped with `ERR_NODINE_PROTOCOL` diagnostics
   (§19.5).
 - **In-flight kernel work:** for Phase 2 this is bounded and non-preemptible
   (§22); the mechanism (cancel marks in the kernel outstanding table) is the
@@ -1760,16 +1760,16 @@ corruption (out-of-bounds wasm access traps — BROWSER_EXECUTION §4 Q7).
 
 ### 19.2 Validation checklist (kernel, per request; order matters)
 
-1. `op` ∈ defined set for this ABI version → else `CARAPACE_ENOOP`.
-2. `flags` unknown bits zero → else `CARAPACE_EINVAL_REQUEST`.
+1. `op` ∈ defined set for this ABI version → else `NODINE_ENOOP`.
+2. `flags` unknown bits zero → else `NODINE_EINVAL_REQUEST`.
 3. unused `a0..a4` zero where the op defines them unused → else
-   `CARAPACE_EINVAL_REQUEST`.
+   `NODINE_EINVAL_REQUEST`.
 4. `tx_off % 8 == 0` and `tx_off + tx_len ≤ TX_SIZE` → else
-   `CARAPACE_EINVAL_REQUEST`; for path ops additionally `tx_len ≤ PATH_MAX`
+   `NODINE_EINVAL_REQUEST`; for path ops additionally `tx_len ≤ PATH_MAX`
    (`ENAMETOOLONG` if longer — a *domain* error, not a protocol error) and
    valid UTF-8 (kernel-side decode check; invalid → `EINVAL`).
 5. Argument ranges per op (e.g. `READ.len_max ≤ area bound`, fd values u32) →
-   `CARAPACE_EINVAL_REQUEST` / `EINVAL`.
+   `NODINE_EINVAL_REQUEST` / `EINVAL`.
 6. fd resolution against the **calling process's** table → `EBADF`.
 7. Path canonicalization + traversal protection (kernel VFS policy: project-root
    confinement, `..` normalization, no escape) → `EACCES`/`ENOENT` per VFS
@@ -1825,7 +1825,7 @@ The design's integrity therefore rests on:
 
 The bridge accepts a completion iff `req_id` is in its outstanding table with
 matching `op` echo; it then removes the id. Anything else is logged as
-`ERR_CARAPACE_PROTOCOL` and dropped. Combined with the kernel's exactly-once
+`ERR_NODINE_PROTOCOL` and dropped. Combined with the kernel's exactly-once
 invariant (§18) and retire-before-reuse (§8.1), no stale completion can be
 misattributed to a successor request.
 
@@ -1846,25 +1846,25 @@ misattributed to a successor request.
 
 A bridge MUST check the group bit before mapping a Node API to ops in that
 group; absence → the Node call fails with `ENOSYS`-shaped
-`ERR_CARAPACE_NOT_IMPLEMENTED` (explicit, never silent).
+`ERR_NODINE_NOT_IMPLEMENTED` (explicit, never silent).
 
 ### 20.2 Negotiation sequence (per endpoint, at bridge bring-up)
 
 ```
 1. bridge reads KCTL: SeqCstLoad(kernel_state) first (must be RUNNING),
-   then magic → mismatch: fatal ERR_CARAPACE_ABI_MAGIC (boot error, no traffic)
+   then magic → mismatch: fatal ERR_NODINE_ABI_MAGIC (boot error, no traffic)
 2. abi_version: bridge requires  kernel.major == bridge.major
                           and     kernel.minor >= bridge.minor
-   else fatal ERR_CARAPACE_ABI_VERSION — explicit failure, never silent
+   else fatal ERR_NODINE_ABI_VERSION — explicit failure, never silent
 3. bridge reads its endpoint-table slot (state RUNNING, generation match)
-   else fatal ERR_CARAPACE_ENDPOINT_STATE
+   else fatal ERR_NODINE_ENDPOINT_STATE
 4. bridge submits OP_ABI_PROBE (sync) with a0 = bridge version
-   → kernel replies 0 + {kernel version, caps} or CARAPACE_EABI_VERSION
+   → kernel replies 0 + {kernel version, caps} or NODINE_EABI_VERSION
    (double check: the KCTL could have been read during a kernel reboot window)
 5. bridge submits OP_PROC_READY (async); kernel marks the endpoint RUNNING
 6. any later suspicion (generation change detected at a wake point,
    §21.3) → re-run steps 1–4; on failure, all pending ops fail with
-   ERR_CARAPACE_KERNEL_SHUTDOWN / _DEAD
+   ERR_NODINE_KERNEL_SHUTDOWN / _DEAD
 ```
 
 Mismatch is always an explicit, named error — the "never silent" rule. There is
@@ -1896,13 +1896,13 @@ ABI version definition in the source code").
 Initiated by the **host** over the control plane (postMessage — allowed class):
 
 - **Graceful (`drain`):** kernel sets `kernel_state = DRAINING` (SeqCst), then:
-  (a) rejects every *not-yet-dequeued* request with a `CARAPACE_ESHUTDOWN`
+  (a) rejects every *not-yet-dequeued* request with a `NODINE_ESHUTDOWN`
   completion (inline error completions are always writable — no payload);
   (b) completes all in-flight (dequeued) work normally; (c) flushes persistence
   (P2-008 hook); (d) sets `kernel_state = STOPPED`; (e) final
   `Atomics.notify` sweep over every endpoint's `cr_seq` and `sm_seq` (wakes all
   waiters — proof §16.5). Bridges observe DRAINING/STOPPED at their wake points
-  and fail all pending + future calls with `ERR_CARAPACE_KERNEL_SHUTDOWN`. The
+  and fail all pending + future calls with `ERR_NODINE_KERNEL_SHUTDOWN`. The
   host then terminates workers at its leisure.
 - **Immediate:** host `terminate()`s the kernel worker (and/or runtime workers).
   Shared memory outlives the kernel worker (M13) but no agent services it;
@@ -1919,7 +1919,7 @@ its not-yet-dequeued requests with `ECANCELED` completions (§18 — the
 (kernel-side accounting), (e) marks the endpoint `DEAD`, (f) notifies the host
 (control plane) that the worker may be recycled (ADR-0003 full-teardown
 recycling: a recycled endpoint gets a fresh `generation`; a stale bridge view
-fails its next CAS/probe with `ERR_CARAPACE_ENDPOINT_STATE`).
+fails its next CAS/probe with `ERR_NODINE_ENDPOINT_STATE`).
 
 ### 21.3 Bridge-side detection of kernel death
 
@@ -1927,7 +1927,7 @@ The kernel heartbeat (`kernel_heartbeat_ms`, §5.3) is updated every pump pass
 (≤ 250 ms, §10.5). The bridge checks it: (a) on every sync-wait rung (§11.3);
 (b) on every async wake; (c) on a 250 ms bridge timer. Age > `KERNEL_DEATH_MS`
 (1000 ms) ⇒ the bridge abandons (§11.5) / fails pending ops with
-`ERR_CARAPACE_KERNEL_DEAD` and refuses new calls. A `generation` change observed
+`ERR_NODINE_KERNEL_DEAD` and refuses new calls. A `generation` change observed
 at any wake point ⇒ kernel rebooted ⇒ re-probe (§20.2 step 6) or fail. Phase 2
 kernel death is a **session-fatal** event (no in-session kernel restart;
 recovery-from-persistence is P2-008 scope) — stated honestly, not hidden.
@@ -2046,7 +2046,7 @@ sandbox — the artifact is reviewed by inspection; P2-003 compiles it with
 `static_assert_size!` failures as merge blockers).
 
 ```rust
-//! kernel-abi — the Carapace kernel ABI, version 1.0.
+//! kernel-abi — the Nodine kernel ABI, version 1.0.
 //!
 //! ONE ABI, two endpoint classes (MODE_SYNC / MODE_ASYNC). All layouts are
 //! little-endian, 8-byte aligned, `#[repr(C)]`. Every constant here is part of
@@ -2203,7 +2203,7 @@ pub enum Op {
 }
 
 impl Op {
-    /// True if defined and implemented in v1.0 (stubs return CARAPACE_ENOOP).
+    /// True if defined and implemented in v1.0 (stubs return NODINE_ENOOP).
     pub const fn implemented(self) -> bool {
         matches!(self,
             Op::AbiProbe | Op::CapsQuery
@@ -2272,18 +2272,18 @@ pub const KERNEL_CAP_PERSIST: u32 = 1 << 3;
 // 7. Error codes (KERNEL_ABI.md §14)
 // ---------------------------------------------------------------------------
 
-/// CARAPACE_* protocol/health errors: status values with no uv analog.
+/// NODINE_* protocol/health errors: status values with no uv analog.
 /// uv errnos (Appendix A of KERNEL_ABI.md; values frozen from Node v26.13.0
 /// Linux) occupy -1..-4095 and are re-exported in `uv` below.
-pub const CARAPACE_EINVAL_REQUEST: i32 = -0x1000_0000;
-pub const CARAPACE_ENOOP: i32 = -0x1000_0001;
-pub const CARAPACE_EABI_VERSION: i32 = -0x1000_0002;
-pub const CARAPACE_ESHUTDOWN: i32 = -0x1000_0003;
-pub const CARAPACE_ETIMEOUT: i32 = -0x1000_0004;
-pub const CARAPACE_EKERNEL_DEAD: i32 = -0x1000_0005;
-pub const CARAPACE_EENDPOINT: i32 = -0x1000_0006;
-pub const CARAPACE_EPROTOCOL: i32 = -0x1000_0007;
-pub const CARAPACE_EBADCORRELATION: i32 = -0x1000_0008;
+pub const NODINE_EINVAL_REQUEST: i32 = -0x1000_0000;
+pub const NODINE_ENOOP: i32 = -0x1000_0001;
+pub const NODINE_EABI_VERSION: i32 = -0x1000_0002;
+pub const NODINE_ESHUTDOWN: i32 = -0x1000_0003;
+pub const NODINE_ETIMEOUT: i32 = -0x1000_0004;
+pub const NODINE_EKERNEL_DEAD: i32 = -0x1000_0005;
+pub const NODINE_EENDPOINT: i32 = -0x1000_0006;
+pub const NODINE_EPROTOCOL: i32 = -0x1000_0007;
+pub const NODINE_EBADCORRELATION: i32 = -0x1000_0008;
 
 /// The libuv errno table (Linux), byte-identical to
 /// poc/p1-poc/uv-errno-linux.txt (generated from Node v26.13.0's vendored
@@ -2403,7 +2403,7 @@ pub struct RequestRecord {
 pub struct CompletionRecord {
     pub req_id: u64,     // +0x00 completed request id (events: watch id)
     pub op: u32,         // +0x08 op echo
-    pub status: i32,     // +0x0C 0 | uv errno | CARAPACE_* (§14)
+    pub status: i32,     // +0x0C 0 | uv errno | NODINE_* (§14)
     pub result_kind: u32,// +0x10 RESULT_*
     pub result_len: u32, // +0x14
     pub result_off: u32, // +0x18 area-relative, 8-aligned
@@ -2511,7 +2511,7 @@ const _: () = assert!(INLINE_CAP == 16 && core::mem::size_of::<CompletionRecord>
 ```
 
 **Provenance of every value in the artifact:** magics and layout constants —
-§5.2–§5.5; op ids — §7; flags/kinds/states — §6/§8.4/§11.5; CARAPACE codes —
+§5.2–§5.5; op ids — §7; flags/kinds/states — §6/§8.4/§11.5; NODINE codes —
 §14.2; uv table — Appendix A (from `poc/p1-poc/uv-errno-linux.txt`, generated
 from Node v26.13.0's vendored uv headers). The `assert!` blocks in §9 are the
 drift guards the directive demands; P2-003 additionally adds a boot-time check
@@ -2536,7 +2536,7 @@ section that defines it:
 | Request flags | §8.4 |
 | Argument offsets + buffer lengths (arena, growth rules, ownership) | §6.1, §9 (esp. §9.2: no growth — fixed, versioned, lazily committed) |
 | Result representation (status + inline vs area; max inline size; alignment) | §6.4 (inline ≤ 16 B; areas; 8-align) |
-| Error codes (uv table + CARAPACE_* namespace; Node exception mapping ERR_FS_*/ERRNO shapes) | §14 (mapping table §14.4), Appendix A |
+| Error codes (uv table + NODINE_* namespace; Node exception mapping ERR_FS_*/ERRNO shapes) | §14 (mapping table §14.4), Appendix A |
 | Completion records (layout; request identification; ordering guarantees) | §6.2, §12.4 |
 | Memory alignment rules (8-byte; why) | §5.1 |
 | Ownership rules (single-writer per cell) | §9.1 |
@@ -2649,7 +2649,7 @@ bytes were computed with a DataView in Node (exact; the generation snippet is
 
 ### B.1 `statSync("/project/data/test.txt")` — endpoint class 1
 
-The file exists (written by a previous `writeFileSync`): size 8 (`"Carapace"`),
+The file exists (written by a previous `writeFileSync`): size 8 (`"Nodine"`),
 mode `0o100644` = 33188, ino 7, mtime 1780934400. The bridge (Rust, in the
 process worker) performs:
 
@@ -2826,7 +2826,7 @@ any Node syscall; see §7.7). `0x1100+` unallocated.
 **§7.7 `OP_TRANSPORT_PROBE` (0x1000, both modes):** `a0` = result_len (0..16 →
 `RESULT_INLINE` with result_len fill bytes; 17..`RX_SIZE−64` async /
 17..`SYNCRES_SIZE−64` sync → `RESULT_RX_ARENA` / `RESULT_SYNCRES` payload of exactly
-result_len bytes; out of range ⇒ `CARAPACE_EINVAL_REQUEST`); `a1` = fill byte (low 8
+result_len bytes; out of range ⇒ `NODINE_EINVAL_REQUEST`); `a1` = fill byte (low 8
 bits); `a2` = work_units (bounded in-kernel fill passes over kernel-heap scratch —
 hard-capped inside the §11.3/F-B4 per-op budget — with a **cooperative cancel
 re-scan** of the submit ring between units: SeqCst `sr_tail` load, then scan for a new
@@ -2842,7 +2842,7 @@ monotonically grow, so the limit implies a genuinely wedged consumer).
 **§18 (gap fills, adjudicated):** cancel-own completion status = **0** on both paths;
 cooperative abort = `ECANCELED`, kind NONE, at the target's dequeue position; target
 lookup scope = the submitting endpoint's unconsumed window; `OP_CANCEL` with
-`FLAG_MODE_SYNC` ⇒ `CARAPACE_EINVAL_REQUEST`; the pre-pass cancel resolution (effects
+`FLAG_MODE_SYNC` ⇒ `NODINE_EINVAL_REQUEST`; the pre-pass cancel resolution (effects
 at scan time, completions at each slot's FIFO position) is normative — it is the only
 reading under which the "not yet dequeued" branch is reachable while §12.4.2 and
 §12.4.5 both hold (P2_004_CANCELLATION.md reachability proof).

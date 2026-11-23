@@ -14,7 +14,7 @@
 //
 // Hand-written sources that ship VERBATIM (supervisor.mjs, runtime-worker.mjs,
 // kernel-driver.js, kernel_core.wasm, sync-module-wrap.mjs, acorn-vendor.mjs,
-// sw-opencontainer.js) are NOT touched by this script.
+// sw-nodine.js) are NOT touched by this script.
 //
 // Inputs (all committed under vendor/):
 //   vendor/node-v26.13.0/lib   upstream Node lib sources (MIT)

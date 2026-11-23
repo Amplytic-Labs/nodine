@@ -6,15 +6,15 @@ import { createModuleWrapBinding } from './sync-module-wrap.mjs';
 // internal/navigator.js polyfill, whose hardwareConcurrency getter calls the
 // os binding (mutual recursion -> stack overflow, caught live via npm's
 // fetch-retry path reading os.availableParallelism()).
-const __carapaceNavCores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 1;
-const __carapaceNavMem = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 0;
+const __nodineNavCores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 1;
+const __nodineNavMem = (typeof navigator !== 'undefined' && navigator.deviceMemory) || 0;
 // The Node bootstrap replaces globalThis.AbortController with Node's JS
 // implementation; fetch() requires the NATIVE AbortSignal. Capture the
 // Worker's own class before the bootstrap runs.
-const __carapaceNativeAbortController = globalThis.AbortController;
-const __carapaceNativeAbortSignal = globalThis.AbortSignal;
-const __carapaceNativeBtoa = globalThis.btoa.bind(globalThis);
-const __carapaceNativeAtob = globalThis.atob.bind(globalThis);
+const __nodineNativeAbortController = globalThis.AbortController;
+const __nodineNativeAbortSignal = globalThis.AbortSignal;
+const __nodineNativeBtoa = globalThis.btoa.bind(globalThis);
+const __nodineNativeAtob = globalThis.atob.bind(globalThis);
 // P1-POC runtime worker — THE PROOF.
 //
 // This Dedicated Worker is the "fresh realm": it loads the upstream Node.js
@@ -97,7 +97,7 @@ function platformFetchGated(url, init) {
 }
 // P2-006-008 mount-aware base: the worker script's own directory. Works at the
 // server root AND behind any reverse-proxy path prefix (the preview gateway
-// mounts this app under /carapace/). Absolute-path fetches would escape the
+// mounts this app under /nodine/). Absolute-path fetches would escape the
 // prefix and 404 on the wrong backend.
 const SELF_BASE = new URL('.', self.location.href).href; // .../[prefix]/
 const urlUnder = (p) => new URL(String(p).replace(/^\//, ''), SELF_BASE).href;
@@ -106,7 +106,7 @@ const platformCrypto = globalThis.crypto; // pre-bootstrap capture (Node's webcr
 // replaces the globals with lazy undici-backed versions. The libsources shim
 // for internal/deps/undici/undici reads this (reading globalThis at
 // shim-eval time would be circular — the lazy globals require the shim).
-globalThis.__carapacePlatformWeb = {
+globalThis.__nodinePlatformWeb = {
   fetch: platformFetch,
   FormData: globalThis.FormData,
   Headers: globalThis.Headers,
@@ -127,11 +127,11 @@ const T_BOOT = platformPerformance.now();
 // P2-006 runtime worker: the Node JS-core host AND the ABI bridge endpoint
 // for ONE process. The kernel (separate worker) owns the VFS + fd tables.
 const TEST_ID = 'RUN'; // legacy gate-trace switch (residual debug reports compare against T3/T6 - inert)
-let INIT = null; // the carapace-init message (section 6 fills it)
+let INIT = null; // the nodine-init message (section 6 fills it)
 
 // Evidence relay: postMessage for the live page log + POST /report for the
 // persistent ndjson. Both channels carry identical records.
-// carapace-init handler — installed at MODULE TOP so the page's init
+// nodine-init handler — installed at MODULE TOP so the page's init
 // message is never lost to the libsources-fetch await window below.
 // ---- P2-006-007 process contract state ------------------------------------
 let STDIO_MODE = 'inherit';   // 'inherit' | 'pipe' | 'ignore' (from INIT)
@@ -260,7 +260,7 @@ self.addEventListener('unhandledrejection', (ev) => {
       reason: String((r && (r.stack || r)) || r).slice(0, 1200),
     });
   } catch {}
-  platformConsoleError('[carapace] unhandled rejection:', (r && (r.stack || r)) || r);
+  platformConsoleError('[nodine] unhandled rejection:', (r && (r.stack || r)) || r);
 });
 
 const initPromise = new Promise((resolve) => {
@@ -270,12 +270,12 @@ self.onmessage = (ev) => {
   // BEFORE adoption — a parked warm worker's module top then skips its own
   // 6 MB fetch (the whole point of the pool: no per-worker libsources
   // transfer). It does NOT resolve initPromise: the worker stays parked
-  // until the real carapace-init arrives.
+  // until the real nodine-init arrives.
   if (m && m.type === 'warm-preinit') {
     if (m.libSources && !LIBDATA_FROM_INIT) LIBDATA_FROM_INIT = m.libSources;
     return;
   }
-  if (m && m.type === 'carapace-init' && !INIT) {
+  if (m && m.type === 'nodine-init' && !INIT) {
     INIT = m;
     // B1 speed: the supervisor may hand the parsed libsources payload with
     // init (it fetched it ONCE per page) — skip the worker's own 6.1 MB
@@ -725,8 +725,8 @@ function syncOpRaw(op, a0 = 0n, a1 = 0n, a2 = 0n, txBytes = null, timeoutMs = AB
       if (Atomics.compareExchange(I32, smbState, ABIC.SM_SUBMITTED, ABIC.SM_ABANDONED) !== ABIC.SM_SUBMITTED) {
         __wlDone(); break; // completed between the checks — retire it (AV-R1a)
       }
-      const err = new Error('ERR_CARAPACE_KERNEL_DEAD');
-      err.code = 'ERR_CARAPACE_KERNEL_DEAD';
+      const err = new Error('ERR_NODINE_KERNEL_DEAD');
+      err.code = 'ERR_NODINE_KERNEL_DEAD';
       __wlDone();
       throw err;
     }
@@ -737,8 +737,8 @@ function syncOpRaw(op, a0 = 0n, a1 = 0n, a2 = 0n, txBytes = null, timeoutMs = AB
       if (Atomics.compareExchange(I32, smbState, ABIC.SM_SUBMITTED, ABIC.SM_ABANDONED) !== ABIC.SM_SUBMITTED) {
         __wlDone(); break; // state moved (COMPLETED) — fall through to the retire path
       }
-      const err = new Error('ERR_CARAPACE_ETIMEOUT');
-      err.code = 'ERR_CARAPACE_ETIMEOUT';
+      const err = new Error('ERR_NODINE_ETIMEOUT');
+      err.code = 'ERR_NODINE_ETIMEOUT';
       __wlDone();
       throw err;
     }
@@ -826,11 +826,11 @@ function publishAsyncRecord(op, a0, a1, a2, txOff, txLen) {
 function trySubmitOne(job) {
   // job = { op, a0, a1, a2, txBytes, resolve, reject }
   if (kernelDead()) {
-    const err = new Error('ERR_CARAPACE_KERNEL_DEAD'); err.code = 'ERR_CARAPACE_KERNEL_DEAD';
+    const err = new Error('ERR_NODINE_KERNEL_DEAD'); err.code = 'ERR_NODINE_KERNEL_DEAD';
     job.reject(err); return true;
   }
   if (job.op !== OP.PROC_READY && endpointDead()) {
-    const err = new Error('ERR_CARAPACE_EENDPOINT'); err.code = 'ERR_CARAPACE_EENDPOINT';
+    const err = new Error('ERR_NODINE_EENDPOINT'); err.code = 'ERR_NODINE_EENDPOINT';
     job.reject(err); return true;
   }
   if (ringFull()) return false;
@@ -877,15 +877,15 @@ function asyncOp(op, a0 = 0n, a1 = 0n, a2 = 0n, txBytes = null) {
 // fix firing without a failure is a healthy signal, not noise).
 const ASYNC_EAGAIN_RETRIES = { retries: 0, exhausted: 0 };
 function rejectJob(job, rec) {
-  const err = new Error(`carapace fs op 0x${rec.op.toString(16)} failed: ${rec.status}`);
-  err.errno = rec.status; err.carapaceStatus = rec.status;
+  const err = new Error(`nodine fs op 0x${rec.op.toString(16)} failed: ${rec.status}`);
+  err.errno = rec.status; err.nodineStatus = rec.status;
   // Node error shape: uv errnos map to their code name so userland
   // catch blocks see e.code === 'ENOENT' etc.
   for (const e of UVMAP) {
     if (e.value === rec.status) { err.code = e.name; break; }
   }
   if (!err.code && rec.status <= -0x10000000) {
-    err.code = 'ERR_CARAPACE_' + (-rec.status - 0x10000000).toString(16).toUpperCase().padStart(8, '0');
+    err.code = 'ERR_NODINE_' + (-rec.status - 0x10000000).toString(16).toUpperCase().padStart(8, '0');
   }
   job.reject(err);
 }
@@ -1128,7 +1128,7 @@ function getInternalBinding(name) {
 }
 function getLinkedBinding(name) {
   // process._linkedBinding is for embedder-linked C++ addons only
-  // (node_binding.cc:1018-1072); Carapace services everything via
+  // (node_binding.cc:1018-1072); Nodine services everything via
   // internalBinding, so linked bindings stay empty.
   const err = new Error(`No such binding was linked: ${name}`);
   err.code = 'ERR_INVALID_MODULE';
@@ -1224,7 +1224,7 @@ const realmProcess = (() => {
   // P2-006-007: the environment comes from the spawn contract (INIT.env) —
   // the supervisor composes HOME/PATH/TERM/npm_config_* per process.
   p.env = Object.assign(Object.create(null), INIT?.env || {
-    NODE_ENV: 'carapace-poc', LANG: 'en_US.UTF-8', HOME: '/home/user', PATH: '/usr/bin:/bin',
+    NODE_ENV: 'nodine-poc', LANG: 'en_US.UTF-8', HOME: '/home/user', PATH: '/usr/bin:/bin',
   });
   p.versions = Object.freeze({
     node: NODE_VERSION,
@@ -1244,7 +1244,7 @@ const realmProcess = (() => {
   // fixed the PLATFORM half for the same reason). os.machine() stays
   // honestly 'wasm32-browser' (B17 report parity: diagnostics, not keys).
   Object.defineProperty(p, 'arch', { value: 'x64' });
-  // B16: platform is 'linux', NOT 'carapace' — the runtime IS a Linux-shaped
+  // B16: platform is 'linux', NOT 'nodine' — the runtime IS a Linux-shaped
   // environment (uv-errno-linux.txt errno table, /usr/bin PATH, POSIX shell,
   // glibc-style npm behavior). A custom platform string breaks every
   // platform-keyed table in the ecosystem (fb-dotslash read `undefined.wasm32`
@@ -1272,10 +1272,10 @@ const capturedLoaders = { internalBinding: undefined, requireBuiltin: undefined 
 //   - package.json exports (string | {import,default,require}) / main
 //   - ESM deps: recursive blob modules with specifiers rewritten to dep URLs
 //   - CJS deps + node: builtins: executed by the worker's REAL CJS machinery,
-//     exposed to the blob graph through globalThis.__CARAPACE_CJS_REGISTRY
+//     exposed to the blob graph through globalThis.__NODINE_CJS_REGISTRY
 // Memoized by absolute path; cycles fall back to a rejected import (rare in
 // practice for the npm tree — documented limitation).
-globalThis.__CARAPACE_CJS_REGISTRY = new Map();
+globalThis.__NODINE_CJS_REGISTRY = new Map();
 let __cjsRegId = 0;
 const esmLoaderMemo = new Map(); // abs path -> Promise<ns>
 const BUILTIN_IDS = new Set(builtinIds);
@@ -1427,9 +1427,9 @@ function esmCjsBridgeBlob(mod, namedKeys) {
   // Register under the SAME id the blob resolves (P2-006-007 falsifier
   // catch: the first cut keyed by blob URL while the blob fetched by id —
   // every bridge import silently yielded undefined).
-  globalThis.__CARAPACE_CJS_REGISTRY.set(id, mod);
+  globalThis.__NODINE_CJS_REGISTRY.set(id, mod);
   const lines = [
-    'const __m = globalThis.__CARAPACE_CJS_REGISTRY_GET(' + JSON.stringify(id) + ');',
+    'const __m = globalThis.__NODINE_CJS_REGISTRY_GET(' + JSON.stringify(id) + ');',
     'const __ns = (__m && (typeof __m === \'object\' || typeof __m === \'function\')) ? { ...__m } : {};',
     '__ns.default = (__m && __m.default !== undefined && __m.__esModule) ? __m.default : __m;',
   ];
@@ -1454,9 +1454,9 @@ async function esmLoadModule(absPath) {
       // synthetic require from the parent context is not possible here — use
       // the requireBuiltin-free path: read + compile via the fs binding's
       // CJS loader hook through a Module created by Node's loader.
-      // The cleanest available execution context: globalThis.__carapaceCjsRequire
+      // The cleanest available execution context: globalThis.__nodineCjsRequire
       // (installed below once the CJS loader is live).
-      const mod = await globalThis.__carapaceCjsRequire(absPath);
+      const mod = await globalThis.__nodineCjsRequire(absPath);
       const named = mod && (typeof mod === 'object' || typeof mod === 'function') ? Object.keys(mod).slice(0, 512) : [];
       const blob = esmCjsBridgeBlob(mod, named);
       const ns = await import(blob);
@@ -1476,7 +1476,7 @@ async function esmLoadModule(absPath) {
         const named = mod && (typeof mod === 'object' || typeof mod === 'function') ? Object.keys(mod).slice(0, 512) : [];
         depUrl = esmCjsBridgeBlob(mod, named);
       } else if (esmIsCjs(resolved)) {
-        const mod = await globalThis.__carapaceCjsRequire(resolved);
+        const mod = await globalThis.__nodineCjsRequire(resolved);
         const named = mod && (typeof mod === 'object' || typeof mod === 'function') ? Object.keys(mod).slice(0, 512) : [];
         depUrl = esmCjsBridgeBlob(mod, named);
       } else {
@@ -1510,7 +1510,7 @@ async function esmImportSpec(spec, parentFile) {
     return ns;
   }
   if (esmIsCjs(resolved)) {
-    const mod = await globalThis.__carapaceCjsRequire(resolved);
+    const mod = await globalThis.__nodineCjsRequire(resolved);
     const ns = mod && (typeof mod === 'object' || typeof mod === 'function') ? { ...mod } : {};
     ns.default = (mod && mod.default !== undefined && mod.__esModule) ? mod.default : mod;
     return ns;
@@ -1518,8 +1518,8 @@ async function esmImportSpec(spec, parentFile) {
   return (await esmLoadModule(resolved)).ns;
 }
 // registry GET used by the bridge blobs (a function, so blobs can call it)
-globalThis.__CARAPACE_CJS_REGISTRY_GET = (id) => globalThis.__CARAPACE_CJS_REGISTRY.get(id);
-// __carapaceCjsRequire: Node's REAL CJS loader on an arbitrary path —
+globalThis.__NODINE_CJS_REGISTRY_GET = (id) => globalThis.__NODINE_CJS_REGISTRY.get(id);
+// __nodineCjsRequire: Node's REAL CJS loader on an arbitrary path —
 // installed lazily (the loader must be booted first). Module._load through
 // the internal loader keeps require() semantics for the dep graph.
 {
@@ -1528,7 +1528,7 @@ globalThis.__CARAPACE_CJS_REGISTRY_GET = (id) => globalThis.__CARAPACE_CJS_REGIS
     return reqB('internal/modules/cjs/loader');
   };
   // absolute-path execution (the mini-loader's CJS lane)
-  Object.defineProperty(globalThis, '__carapaceCjsRequire', {
+  Object.defineProperty(globalThis, '__nodineCjsRequire', {
     configurable: true,
     get() {
       return (p) => {
@@ -1552,7 +1552,7 @@ globalThis.__CARAPACE_CJS_REGISTRY_GET = (id) => globalThis.__CARAPACE_CJS_REGIS
   // specifier execution WITH a parent module context (resolution from the
   // importer's directory — the prologue's require() equivalent, callable
   // from the serialized chain).
-  Object.defineProperty(globalThis, '__carapaceCjsRequireFrom', {
+  Object.defineProperty(globalThis, '__nodineCjsRequireFrom', {
     configurable: true,
     get() {
       return (spec, parentFile) => {
@@ -1571,14 +1571,14 @@ globalThis.__CARAPACE_CJS_REGISTRY_GET = (id) => globalThis.__CARAPACE_CJS_REGIS
 // chain (the §11 sync mailbox is single-flight; npm's Display fires
 // Promise.all([import('chalk'), import('supports-color')]) and the lanes
 // must not interleave sync ops).
-globalThis.__carapaceDynamicImport = (spec, parentFile) => {
+globalThis.__nodineDynamicImport = (spec, parentFile) => {
   dynImportInFlight++; // synchronous: the import expression is in flight NOW
   const run = dynImportChain.then(async () => {
     try {
     report({ type: 'dyn-import', spec, from: parentFile });
     let m;
     try {
-      m = globalThis.__carapaceCjsRequireFrom(spec, parentFile);
+      m = globalThis.__nodineCjsRequireFrom(spec, parentFile);
       report({ type: 'dyn-import-cjs-ok', spec });
     } catch (e) {
       report({ type: 'dyn-import-esm-lane', spec, why: String(e && e.message).slice(0, 120) });
@@ -1622,7 +1622,7 @@ function traceLife(kind, detail) {
   lifeRing.push(Date.now() - lifeT0 + 'ms ' + kind + (detail !== undefined ? ' ' + detail : ''));
   if (lifeRing.length > LIFE_RING_MAX) lifeRing.splice(0, lifeRing.length - LIFE_RING_MAX);
 }
-globalThis.__carapaceEsmImport = (spec, parentFile) => {
+globalThis.__nodineEsmImport = (spec, parentFile) => {
   // The mini-loader (above): full node_modules/#imports resolution, CJS
   // bridging through the real worker CJS machinery, ESM deps as rewritten
   // blob modules. The cascaded loader needs the sync ModuleJob path this
@@ -1842,7 +1842,7 @@ let esmEntryTerminal = false;   // uncaught exception terminated the entry
 
 const esmHost = {
   dynamicImport(spec, modulePath) {
-    return globalThis.__carapaceDynamicImport(spec, modulePath);
+    return globalThis.__nodineDynamicImport(spec, modulePath);
   },
   importMetaResolveInit(url) {
     const f = esmRegistry.callbacks.importMetaResolve;
@@ -1865,14 +1865,14 @@ const esmHost = {
   onEvalStart() { pendingEsmOps++; esmEvalStarted = true; },
   onEvalEnd() { pendingEsmOps--; },
 };
-const carapaceModuleWrap = createModuleWrapBinding(acorn, esmHost);
+const nodineModuleWrap = createModuleWrapBinding(acorn, esmHost);
 defBinding('module_wrap', () => Object.freeze({
-  ModuleWrap: carapaceModuleWrap.ModuleWrap,
+  ModuleWrap: nodineModuleWrap.ModuleWrap,
   setImportModuleDynamicallyCallback(fn) { esmRegistry.callbacks.importDynamic = fn; },
   setInitializeImportMetaObjectCallback(fn) { esmRegistry.callbacks.importMeta = fn; },
   setImportMetaResolveInitializer(fn) { esmRegistry.callbacks.importMetaResolve = fn; },
-  createRequiredModuleFacade: carapaceModuleWrap.createRequiredModuleFacade,
-  throwIfPromiseRejected: carapaceModuleWrap.throwIfPromiseRejected,
+  createRequiredModuleFacade: nodineModuleWrap.createRequiredModuleFacade,
+  throwIfPromiseRejected: nodineModuleWrap.throwIfPromiseRejected,
   kUninstantiated: 0, kInstantiating: 1, kInstantiated: 2,
   kEvaluating: 3, kEvaluated: 4, kErrored: 5,
   kSourcePhase: 1, kDeferPhase: 2, kEvaluationPhase: 3, // module_wrap.h:37-39
@@ -2609,7 +2609,7 @@ defBinding('process_methods', () => {
   const hrtimeBuffer = new Float64Array(3);
   const t0 = Date.now();
   return {
-    dlopen() { throw new Error('dlopen: native addons unsupported in Carapace'); },
+    dlopen() { throw new Error('dlopen: native addons unsupported in Nodine'); },
     uptime: () => (platformPerformance.now() - T_BOOT) / 1000,
     _getActiveRequests: () => [],
     _getActiveHandles: () => [],
@@ -2682,11 +2682,11 @@ defBinding('process_methods', () => {
     patchProcessObject(p) {
       // node_process_object.cc:160-244: argv/execArgv/pid/title/debugPort.
       // argv[1] is the entry module when the run uses run_main_module.
-      p.argv = [INIT?.argv0 || '/carapace/bin/node', ...(INIT?.entry ? [INIT.entry] : []), ...(INIT?.argv || [])];
+      p.argv = [INIT?.argv0 || '/nodine/bin/node', ...(INIT?.entry ? [INIT.entry] : []), ...(INIT?.argv || [])];
       p.execArgv = [];
       // B26: real node's execPath is ALWAYS the absolute interpreter binary
       // path — even when launched via a bare `node` (PATH hit). The old
-      // argv0-passthrough left '/carapace/bin/node' (or bare 'node') in
+      // argv0-passthrough left '/nodine/bin/node' (or bare 'node') in
       // process.execPath, which broke TWO ecosystem surfaces:
       //  (1) module.globalPaths — the vendored loader computes it from
       //      dirname(execPath); with the honest '/usr/bin/node' it now
@@ -2701,7 +2701,7 @@ defBinding('process_methods', () => {
       {
         const raw0 = String(INIT?.argv0 || 'node');
         p.execPath = raw0.includes('/') ? raw0
-          : (raw0 === 'node' || raw0 === 'carapace-node' ? '/usr/bin/node' : '/usr/bin/' + raw0);
+          : (raw0 === 'node' || raw0 === 'nodine-node' ? '/usr/bin/node' : '/usr/bin/' + raw0);
       }
       Object.defineProperty(p, 'pid', { value: INIT?.pid ?? 1, writable: false });
       Object.defineProperty(p, 'ppid', { get: () => 0 });
@@ -2823,8 +2823,8 @@ defBinding('buffer', () => {
       return -1;
     },
     swap16: SwapN(2), swap32: SwapN(4), swap64: SwapN(8),
-    atob: (s) => __carapaceNativeAtob(s),
-    btoa: (s) => __carapaceNativeBtoa(s),
+    atob: (s) => __nodineNativeAtob(s),
+    btoa: (s) => __nodineNativeBtoa(s),
     asciiWriteStatic: (buf, str, offset, maxLength) => WriteStatic(buf, str, offset, maxLength, 'latin1'),
     latin1WriteStatic: (buf, str, offset, maxLength) => WriteStatic(buf, str, offset, maxLength, 'latin1'),
     utf8WriteStatic: (buf, str, offset, maxLength) => WriteStatic(buf, str, offset, maxLength, 'utf-8'),
@@ -2874,7 +2874,7 @@ defBinding('buffer', () => {
     let bytes;
     if (encoding === 'base64' || encoding === 'base64url') {
       const b64 = encoding === 'base64url' ? str.replace(/-/g, '+').replace(/_/g, '/') : str;
-      const bin = __carapaceNativeAtob(b64);
+      const bin = __nodineNativeAtob(b64);
       bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     } else if (encoding === 'hex') {
@@ -2897,7 +2897,7 @@ defBinding('buffer', () => {
   function Latin1Slice(buf, start, end) { let s = ''; for (let i = start; i < end; i++) s += String.fromCharCode(buf[i]); return s; }
   function B64Slice(buf, start, end, url) {
     const bin = Latin1Slice(buf, start, end);
-    const b64 = __carapaceNativeBtoa(bin);
+    const b64 = __nodineNativeBtoa(bin);
     return url ? b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : b64;
   }
   function HexSlice(buf, start, end) { let s = ''; for (let i = start; i < end; i++) s += buf[i].toString(16).padStart(2, '0'); return s; }
@@ -3080,7 +3080,7 @@ defBinding('url', () => {
   }
 
   function pathToFileURL(input, interpretAsWindowsPath, base) {
-    // POSIX path -> file: URL (the carapace host is not Windows; the windows
+    // POSIX path -> file: URL (the nodine host is not Windows; the windows
     // variant is accepted but treated like posix — documented PoC limitation).
     let p = String(input);
     if (!p.startsWith('/')) p = '/' + p;
@@ -3217,7 +3217,7 @@ defBinding('contextify', () => {
       // against the tree we run (none in npm 12.2.2's CJS).
       if (/\bimport\s*\(/.test(src)) {
         src = src.replace(/(^|[^.\w$])import\s*\(/g, '$1__cjsDynamicImport(');
-        src = 'const __cjsDynamicImport = (spec) => globalThis.__carapaceDynamicImport(spec, __filename);\n' + src;
+        src = 'const __cjsDynamicImport = (spec) => globalThis.__nodineDynamicImport(spec, __filename);\n' + src;
       }
       try {
         fn = new Function('exports', 'require', 'module', '__filename', '__dirname', src);
@@ -3237,8 +3237,8 @@ defBinding('contextify', () => {
         try {
           return fn.apply(this, args);
         } catch (e) {
-          if (e instanceof Error && !e.__carapaceModuleTagged) {
-            e.__carapaceModuleTagged = true;
+          if (e instanceof Error && !e.__nodineModuleTagged) {
+            e.__nodineModuleTagged = true;
             try { e.message = e.message + ' (loading ' + filename + ')'; } catch {}
           }
           throw e;
@@ -3339,11 +3339,11 @@ defBinding('fs', () => {
     return `${n}: ${syscall}${p}${d}, errno: ${errno}`;
   }
   function makeErr(errno, syscall, path, dest) {
-    // Kernel meta-codes (CARAPACE_*) surface with their protocol name.
+    // Kernel meta-codes (NODINE_*) surface with their protocol name.
     if (errno <= -0x10000000) {
-      const err = new Error(`carapace: ${syscall} failed with kernel status ${errno}`);
+      const err = new Error(`nodine: ${syscall} failed with kernel status ${errno}`);
       err.errno = errno;
-      err.code = `ERR_CARAPACE_${(-errno - 0x10000000).toString(16).toUpperCase().padStart(8, '0')}`;
+      err.code = `ERR_NODINE_${(-errno - 0x10000000).toString(16).toUpperCase().padStart(8, '0')}`;
       err.syscall = syscall;
       if (path !== undefined) err.path = path;
       return err;
@@ -3430,13 +3430,13 @@ defBinding('fs', () => {
   // promises/callback stat/lstat/mkdir/rmdir/unlink/rename bindings run the
   // same kernel op through syncOp inside a resolved-promise wrapper (userland
   // semantics unchanged: errors still surface as rejections / oncomplete
-  // errors). Gates: CARAPACE_SYNC_FAST=0 disables (kill switch); fires only
+  // errors). Gates: NODINE_SYNC_FAST=0 disables (kill switch); fires only
   // while this worker has NO async op outstanding (single-flight mailbox +
   // no completion-drain starvation — bursts fall back automatically); any
   // mailbox contention error falls back to the async ring.
   const SYNC_FAST = (() => {
     try {
-      const v = String(((INIT && INIT.env) || {}).CARAPACE_SYNC_FAST ?? '1').trim().toLowerCase();
+      const v = String(((INIT && INIT.env) || {}).NODINE_SYNC_FAST ?? '1').trim().toLowerCase();
       return !/^(0|off|false|no)$/.test(v);
     } catch { return true; }
   })();
@@ -3446,7 +3446,7 @@ defBinding('fs', () => {
     try {
       return { ok: true, res: syncOp(op, a0, a1, a2, txBytes) };
     } catch (e) {
-      if (e && (e.code === 'ERR_CARAPACE_ETIMEOUT' || /mailbox stuck|CAS lost/i.test(String(e && e.message)))) {
+      if (e && (e.code === 'ERR_NODINE_ETIMEOUT' || /mailbox stuck|CAS lost/i.test(String(e && e.message)))) {
         return { ok: false, res: null };
       }
       throw e; // genuine kernel error surfaces normally
@@ -4128,7 +4128,7 @@ defBinding('fs', () => {
       // buffer with ghost keystrokes; verified live — the typed command
       // line answered create-expo's name prompt). __stdinOwned flips fd 0
       // to the channel queue exactly like fd0Piped does.
-      const fd0Piped = globalThis.__stdinOwned || (globalThis.__carapaceStdioArr ? globalThis.__carapaceStdioArr[0] === 'pipe' : STDIO_MODE === 'pipe');
+      const fd0Piped = globalThis.__stdinOwned || (globalThis.__nodineStdioArr ? globalThis.__nodineStdioArr[0] === 'pipe' : STDIO_MODE === 'pipe');
       if (fd0Piped && fd === 0) {
         const take = (n) => n;
         if (req === kUsePromises) return stdinPipeRead(buffer, offset, length).then(take);
@@ -4290,7 +4290,7 @@ defBinding('fs', () => {
     // wrapper, so userland still sees async semantics/errors as rejections)
     // is behaviorally identical for non-interleaved callers.
     // Safety gates (all must hold; else fall back to the async ring):
-    //   * CARAPACE_SYNC_FAST=0 in env disables everything (kill switch).
+    //   * NODINE_SYNC_FAST=0 in env disables everything (kill switch).
     //   * Only fire while NO async op of ours is outstanding — the sync
     //     mailbox is single-flight and the pump's completion drain for our
     //     in-flight async ops must not starve behind a long sync burst.
@@ -4877,18 +4877,18 @@ defBinding('fs_dir', () => {
 
 // OBLIGATION 37 (P1-POC2): 'os' — host OS seam (src/node_os.cc). Called at
 // lib/os.js module load: getOSInformation() → [type, version, release,
-// machine]. Values are HONEST for the Carapace host (this is not Linux;
-// process.platform is 'carapace' — see report divergences): parallelism and
+// machine]. Values are HONEST for the Nodine host (this is not Linux;
+// process.platform is 'nodine' — see report divergences): parallelism and
 // endianness are real browser/engine values.
 defBinding('os', () => {
   const isBigEndianValue = new Uint8Array(new Uint32Array([1]).buffer)[0] === 0;
   function osInfo() {
-    return ['Carapace', 'browser', '1.0.0', 'wasm32-browser'];
+    return ['Nodine', 'browser', '1.0.0', 'wasm32-browser'];
   }
   return Object.freeze({
     getOSInformation: osInfo,
-    getAvailableParallelity: () => __carapaceNavCores,
-    getAvailableParallelism: () => __carapaceNavCores,
+    getAvailableParallelity: () => __nodineNavCores,
+    getAvailableParallelism: () => __nodineNavCores,
     // lib/os.js cpus() consumes the FLAT [model, speed, user, nice, sys,
     // idle, irq] × N shape. Count is the real browser-observed parallelism;
     // per-CPU model/speed/times are not observable from a worker (model is
@@ -4896,19 +4896,19 @@ defBinding('os', () => {
     // getFreeMem/getLoadAvg). The yarn shell's dep graph calls os.cpus() at
     // module scope.
     getCPUs: () => {
-      const n = __carapaceNavCores;
+      const n = __nodineNavCores;
       const out = new Array(n * 7);
       for (let i = 0; i < n; i++) {
         const b = i * 7;
-        out[b] = 'Carapace Browser Worker (wasm32)';
+        out[b] = 'Nodine Browser Worker (wasm32)';
         out[b + 1] = 0; out[b + 2] = 0; out[b + 3] = 0; out[b + 4] = 0; out[b + 5] = 0; out[b + 6] = 0;
       }
       return out;
     },
     getFreeMem: () => 0,                       // not observable in a worker (documented)
-    getTotalMem: () => __carapaceNavMem * 1024 * 1024 * 1024,
+    getTotalMem: () => __nodineNavMem * 1024 * 1024 * 1024,
     getHomeDirectory: () => '/home/user',
-    getHostname: () => 'carapace',
+    getHostname: () => 'nodine',
     getInterfaceAddresses: () => [],
     getLoadAvg: () => [0, 0, 0],
     getPriority: (pid, ctx) => { if (ctx) ctx.errno = 0; return 0; },
@@ -4923,7 +4923,7 @@ defBinding('os', () => {
 // P2-006-008: 'signal_wrap' — process.on('SIGINT', …) reaches here via
 // internal/process/signal.js startListeningIfSignal (the yarn shell
 // registers SIGINT/SIGTERM handlers around every spawned command). Signals
-// in Carapace are DELIVERED by the supervisor channel ('signal' messages →
+// in Nodine are DELIVERED by the supervisor channel ('signal' messages →
 // raiseProcessSignal → process.emit), so the binding only registers
 // interest: start() reports success, close/unref are no-ops, and onsignal
 // is never fired from here (the channel path emits directly).
@@ -5051,7 +5051,7 @@ function readWholeFileSyncKernel(path) {
 // (%40npmcli); the kernel VFS stores decoded paths. Walk up from the module
 // URL's directory; a node_modules basename is the scope boundary (matches
 // Node's readPackageScope semantics).
-function carapaceUrlToPath(u) {
+function nodineUrlToPath(u) {
   let s = String(u);
   try {
     if (s.startsWith('file://')) {
@@ -5062,7 +5062,7 @@ function carapaceUrlToPath(u) {
   return s;
 }
 function packageScopeWalk(urlOrPath, wantSerialized) {
-  let dir = carapaceUrlToPath(urlOrPath);
+  let dir = nodineUrlToPath(urlOrPath);
   if (dir.endsWith('/')) dir = dir.slice(0, -1);
   const lastSlash = dir.lastIndexOf('/');
   if (lastSlash >= 0) dir = dir.slice(0, lastSlash); // dirname of the module URL
@@ -5092,7 +5092,7 @@ function serializePackageJSON(jsonPath) {
   // P2-006-008: the ESM resolver passes URL strings (file:///a/b%40c) — the
   // kernel VFS stores decoded paths.
   let bytes;
-  try { bytes = readWholeFileSyncKernel(carapaceUrlToPath(jsonPath)); } catch { return undefined; }
+  try { bytes = readWholeFileSyncKernel(nodineUrlToPath(jsonPath)); } catch { return undefined; }
   if (!bytes || bytes.length === 0) return undefined;
   let parsed;
   try { parsed = JSON.parse(utf8Decoder.decode(bytes)); } catch { return undefined; }
@@ -5138,7 +5138,7 @@ defBinding('modules', () => Object.freeze({
     const serialized = packageScopeWalk(urlString, true);
     if (serialized !== undefined) return serialized;
     // no scope found: return the candidate pjsonPath (exists:false contract)
-    let dir = carapaceUrlToPath(urlString);
+    let dir = nodineUrlToPath(urlString);
     if (dir.endsWith('/')) dir = dir.slice(0, -1);
     dir = dir.slice(0, dir.lastIndexOf('/'));
     return dir + '/package.json';
@@ -5499,7 +5499,7 @@ defBinding('tty_wrap', () => Object.freeze({
   // prompts library uses isatty(0)&&isatty(1) to draw the interactive
   // prompt (a degraded CI path renders a different non-input flow).
   isTTY: (fd) => {
-    const arr = globalThis.__carapaceStdioArr;
+    const arr = globalThis.__nodineStdioArr;
     if (Array.isArray(arr) && fd >= 0 && fd <= 2) return arr[fd] === 'inherit';
     return fd === 0 || fd === 1 || fd === 2;
   },
@@ -5566,10 +5566,10 @@ defBinding('serdes', () => {
       let payload;
       try {
         payload = platformTextEncoder.encode(JSON.stringify(value, (k, v) => {
-          if (typeof v === 'bigint') return { __carapaceBigInt: v.toString() };
-          if (v instanceof Uint8Array) return { __carapaceU8: Array.from(v) };
+          if (typeof v === 'bigint') return { __nodineBigInt: v.toString() };
+          if (v instanceof Uint8Array) return { __nodineU8: Array.from(v) };
           if (v != null && typeof v === 'object' && !(v instanceof Array) && v.buffer instanceof ArrayBuffer && v.constructor && v.constructor.name && v.constructor.name !== 'Object') {
-            return { __carapaceU8: Array.from(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)) };
+            return { __nodineU8: Array.from(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)) };
           }
           return v;
         }));
@@ -5609,8 +5609,8 @@ defBinding('serdes', () => {
       const bytes = this.buffer.subarray(this._off, this._off + len);
       this._off += len;
       return JSON.parse(platformDecoders.strip.decode(bytes), (k, v) => {
-        if (v && typeof v === 'object' && v.__carapaceBigInt !== undefined) return BigInt(v.__carapaceBigInt);
-        if (v && typeof v === 'object' && Array.isArray(v.__carapaceU8)) return new Uint8Array(v.__carapaceU8);
+        if (v && typeof v === 'object' && v.__nodineBigInt !== undefined) return BigInt(v.__nodineBigInt);
+        if (v && typeof v === 'object' && Array.isArray(v.__nodineU8)) return new Uint8Array(v.__nodineU8);
         return v;
       });
     }
@@ -5650,7 +5650,7 @@ defBinding('report', () => Object.freeze({
   getReport() {
     return JSON.stringify({
       header: {
-        hostName: 'carapace', osName: 'Carapace', platform: 'linux',
+        hostName: 'nodine', osName: 'Nodine', platform: 'linux',
         glibcVersionRuntime: '2.36',
       },
     });
@@ -6061,7 +6061,7 @@ BRIDGE_BUILTINS.set('child_process', (exports, require, module) => {
     // 'pipe' but the yarn shell hands its OWN process.stdin object, which is
     // the tty). Getting this wrong lost every keystroke in create-expo's
     // prompt (the grandchild read an empty pipe queue while terminal bytes
-    // sat in the kernel FIFO — observed live: 'CarapaceExpoGolden' → 'apden'
+    // sat in the kernel FIFO — observed live: 'NodineExpoGolden' → 'apden'
     // → nothing).
     const outMode = STDIO_MODE === 'pipe' ? 1 : STDIO_MODE === 'ignore' ? 2 : 0;
     const inMode = STDIO_MODE === 'ignore' ? 2 : 0; // own stdin is the real fd 0
@@ -6402,12 +6402,12 @@ BRIDGE_BUILTINS.set('child_process', (exports, require, module) => {
 // P2-008 Step-3 Phase-2 — DIRECT NETWORK ADAPTER (browser fetch → registry).
 // Evidence & decision gate: docs/perf/direct-network.md (Phase 0).
 // Mode plumbing (INIT.env, supervisor-composed):
-//   CARAPACE_NETWORK_MODE       = 'direct' (default — self-contained: the
+//   NODINE_NETWORK_MODE       = 'direct' (default — self-contained: the
 //                                  browser talks to the allowlisted registries
 //                                  directly; no host relay needed) | 'proxy'
 //                                  (host must serve an /egress relay)
-//   CARAPACE_NETWORK_ALLOWLIST  = comma-separated HTTPS hosts (default registry.npmjs.org)
-//   CARAPACE_NETWORK_PROXY_URL  = optional USER-SUPPLIED relay base URL
+//   NODINE_NETWORK_ALLOWLIST  = comma-separated HTTPS hosts (default registry.npmjs.org)
+//   NODINE_NETWORK_PROXY_URL  = optional USER-SUPPLIED relay base URL
 // The corgi gate moved from the relay into the adapter: evaluated on the
 // ORIGINAL npm headers (npm-command is required), rewriting accept to the
 // preflight-free single-value corgi form. Substituted requests falling back
@@ -6415,13 +6415,13 @@ BRIDGE_BUILTINS.set('child_process', (exports, require, module) => {
 // ---------------------------------------------------------------------------
 const DIRECT_CORGI_ACCEPT = 'application/vnd.npm.install-v1+json';
 const DIRECT_CORGI_COMMANDS = new Set(['install', 'update']); // Phase-0 §1.2: the #fetchManifest-fullMetadata commands
-// Phase-4 kill switch: CARAPACE_DIRECT_CORGI=off|0|false (case-insensitive)
+// Phase-4 kill switch: NODINE_DIRECT_CORGI=off|0|false (case-insensitive)
 // disables substitution outright — every packument rides the original
 // full-metadata accept. Reaches INIT.env the same way as the mode vars
 // (leading env assignment on the typed command → supervisor.baseEnv).
 function directCorgiDisabled() {
   try {
-    const v = String(((INIT && INIT.env) || {}).CARAPACE_DIRECT_CORGI || '').trim().toLowerCase();
+    const v = String(((INIT && INIT.env) || {}).NODINE_DIRECT_CORGI || '').trim().toLowerCase();
     return v === 'off' || v === '0' || v === 'false';
   } catch {}
   return false;
@@ -6435,11 +6435,11 @@ function directNetConfig() {
   // Package default 'direct': this runtime ships self-contained on static
   // hosts (no /egress relay exists), so the browser must talk to the
   // allowlisted registries directly. Embeddings that DO run a relay can
-  // opt back into 'proxy' via BootOptions.env.CARAPACE_NETWORK_MODE.
-  const mode = String(env.CARAPACE_NETWORK_MODE || 'direct').toLowerCase();
-  const allow = String(env.CARAPACE_NETWORK_ALLOWLIST || 'registry.npmjs.org')
+  // opt back into 'proxy' via BootOptions.env.NODINE_NETWORK_MODE.
+  const mode = String(env.NODINE_NETWORK_MODE || 'direct').toLowerCase();
+  const allow = String(env.NODINE_NETWORK_ALLOWLIST || 'registry.npmjs.org')
     .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const proxyUrl = String(env.CARAPACE_NETWORK_PROXY_URL || '').trim() || null;
+  const proxyUrl = String(env.NODINE_NETWORK_PROXY_URL || '').trim() || null;
   return { mode, allow: new Set(allow), proxyUrl };
 }
 // Packument-path shape (mirrors the relay's egressClassOf): not '/', not
@@ -6589,7 +6589,7 @@ function bridgeHttpFactory(isHttps) {
         // (OOM-killed mid-reify). The relay ALWAYS sends exact content-length
         // on the buffered path, and the CL guard alone catches truncation;
         // parts (and the digest) now run ONLY for bodies ≤ 2 MiB.
-        this._wantSum = String(headers['x-carapace-sha256'] || '') || null;
+        this._wantSum = String(headers['x-nodine-sha256'] || '') || null;
         this._sumParts = (this._wantSum && Number.isFinite(this._cl) && this._cl <= 2 * 1024 * 1024) ? [] : null;
         this._counted = false; // pendingHttpFetches-- exactly once (done + destroy paths overlap)
       }
@@ -6685,7 +6685,7 @@ function bridgeHttpFactory(isHttps) {
         this._ended = false;
         this._aborted = false;
         this._body = [];
-        this._controller = new __carapaceNativeAbortController();
+        this._controller = new __nodineNativeAbortController();
         this._timeoutMs = 0;
         this._socketEmitted = false;
         this._response = null;
@@ -6768,18 +6768,18 @@ function bridgeHttpFactory(isHttps) {
             };
             const needsRelay = Object.keys(headers).some((k) => !SAFE.has(k) && (k !== 'content-type' || !ctSafe(headers[k])));
             if (needsRelay) {
-              // P2-008 Step-3 §2.6: a user-supplied proxy (CARAPACE_NETWORK_
+              // P2-008 Step-3 §2.6: a user-supplied proxy (NODINE_NETWORK_
               // PROXY_URL) replaces the built-in /egress hop. Requests are
               // never silently de-authenticated — the full original header set
-              // rides the x-carapace-headers envelope, exactly like /egress.
+              // rides the x-nodine-headers envelope, exactly like /egress.
               const cfg = directNetConfig();
               fetchUrl = cfg.proxyUrl ? new URL('egress', ensureTrailingSlash(cfg.proxyUrl)).href : urlUnder('egress');
               if (body !== undefined && this.method === 'GET') relayUsesPost = true; // fetch cannot GET with a body; the relay forwards the real method
               outHeaders = {
                 'content-type': 'application/octet-stream',
-                'x-carapace-url': this.url.href,
-                'x-carapace-method': this.method,
-                'x-carapace-headers': JSON.stringify(headers),
+                'x-nodine-url': this.url.href,
+                'x-nodine-method': this.method,
+                'x-nodine-headers': JSON.stringify(headers),
               };
             }
           }
@@ -7439,7 +7439,7 @@ BRIDGE_BUILTINS.set('https', bridgeHttpFactory(true));
 // exactly like a bridge request. Everything else re-exports the platform
 // classes verbatim — identical shape to the libsources shim it replaces.
 BRIDGE_BUILTINS.set('internal/deps/undici/undici', (exports) => {
-  const P = globalThis.__carapacePlatformWeb || {};
+  const P = globalThis.__nodinePlatformWeb || {};
   const rawFetch = P.fetch;
   // P2-EXIT (B15 follow-up): undici TIMEOUT PARITY. B15 made a pending
   // global fetch hold the process open (pendingHttpFetches++ until settle)
@@ -7462,11 +7462,11 @@ BRIDGE_BUILTINS.set('internal/deps/undici/undici', (exports) => {
   // denominator: it can only fire earlier than undici's worst case,
   // never later). A caller's own init.signal still wins (it rejects the
   // platform fetch first); this is a backstop for requests the network
-  // never answers. CARAPACE_FETCH_TIMEOUT_MS overrides (0 disables),
+  // never answers. NODINE_FETCH_TIMEOUT_MS overrides (0 disables),
   // mirroring undici's configurable dispatcher timeouts.
   const FETCH_TIMEOUT_MS = (() => {
     let v = null;
-    try { v = INIT && INIT.env && INIT.env.CARAPACE_FETCH_TIMEOUT_MS; } catch {}
+    try { v = INIT && INIT.env && INIT.env.NODINE_FETCH_TIMEOUT_MS; } catch {}
     const n = parseInt(v || '', 10);
     return Number.isFinite(n) && n >= 0 ? n : 300000; // undici default
   })();
@@ -7476,7 +7476,7 @@ BRIDGE_BUILTINS.set('internal/deps/undici/undici', (exports) => {
         // the platform fetch FIRST (semantics unchanged for well-behaved
         // callers like pacote's 30 s timeout signal).
         const outerSignal = (init && typeof init === 'object') ? init.signal : undefined;
-        const ac = new __carapaceNativeAbortController();
+        const ac = new __nodineNativeAbortController();
         if (outerSignal) {
           if (outerSignal.aborted) ac.abort(outerSignal.reason);
           else outerSignal.addEventListener('abort', () => ac.abort(outerSignal.reason), { once: true });
@@ -7640,34 +7640,34 @@ BRIDGE_BUILTINS.set('worker_threads', (exports, require) => {
       // Trampoline now: early messages queue in an inbox; the prelude
       // (pnpm_wasmPreludeUrl) drains it when it installs its handler.
       const boot = [
-        'globalThis.__CARAPACE_WORKER_BOOT__ = new Promise((resolve) => {',
-        '  globalThis.__CARAPACE_WORKER_INBOX__ = [];',
+        'globalThis.__NODINE_WORKER_BOOT__ = new Promise((resolve) => {',
+        '  globalThis.__NODINE_WORKER_INBOX__ = [];',
         '  self.onmessage = function (e) {',
-        '    if (e.data && e.data.__carapaceWorkerData && globalThis.__CARAPACE_WORKER_DATA__ === undefined) {',
-        '      globalThis.__CARAPACE_WORKER_DATA__ = e.data.value; resolve(); return;',
+        '    if (e.data && e.data.__nodineWorkerData && globalThis.__NODINE_WORKER_DATA__ === undefined) {',
+        '      globalThis.__NODINE_WORKER_DATA__ = e.data.value; resolve(); return;',
         '    }',
-        '    globalThis.__CARAPACE_WORKER_INBOX__.push(e.data);',
+        '    globalThis.__NODINE_WORKER_INBOX__.push(e.data);',
         '  };',
         '});',
         // M1.7A-b4 DIAG: nested-worker lifecycle trace (postMessage to
         // parent rides the wasi-threads channel? NO — postMessage from the
         // worker goes to the PARENT Worker object's onmessage, which the
         // wasi-threads harness installed via worker.on('message'). Prefix
-        // diag messages with __carapaceWtDiag so the harness ignores them
+        // diag messages with __nodineWtDiag so the harness ignores them
         // (unknown __emnapi__ types are warned, not fatal) — TEMPORARY,
         // removed before commit.
-        'const __wtDiag = (m) => { try { self.postMessage({ __carapaceWtDiag: true, msg: m, t: Date.now() }); } catch {} };',
-        'globalThis.__CARAPACE_WORKER_BOOT__.then(() => { __wtDiag("boot:workerData-ok importing"); import(' + JSON.stringify(url) + ').then(() => __wtDiag("boot:import-resolved"), (e) => __wtDiag("boot:import-REJECTED " + (e && e.message))); });',
+        'const __wtDiag = (m) => { try { self.postMessage({ __nodineWtDiag: true, msg: m, t: Date.now() }); } catch {} };',
+        'globalThis.__NODINE_WORKER_BOOT__.then(() => { __wtDiag("boot:workerData-ok importing"); import(' + JSON.stringify(url) + ').then(() => __wtDiag("boot:import-resolved"), (e) => __wtDiag("boot:import-REJECTED " + (e && e.message))); });',
       ].join('\n');
       const bootUrl = platformCreateObjectURL(new platformBlobCtor([boot], { type: 'text/javascript' }));
       const w = new platformWorkerCtor(bootUrl, { type: 'module' });
-      w.postMessage({ __carapaceWorkerData: true, value: data });
+      w.postMessage({ __nodineWorkerData: true, value: data });
       this._worker = w;
       this._exited = false;
       this._listeners = { message: [], error: [], exit: [] };
       this._pendingExit = 0;
       w.onmessage = (e) => {
-        if (e.data && e.data.__carapaceWtDiag) { report({ type: 'worker-diag', msg: String(e.data.msg).slice(0, 250) }); return; } // M1.7A-b4 TEMP DIAG
+        if (e.data && e.data.__nodineWtDiag) { report({ type: 'worker-diag', msg: String(e.data.msg).slice(0, 250) }); return; } // M1.7A-b4 TEMP DIAG
         if (e.data && e.data.pnpmHostRpc) report({ type: 'worker-diag', msg: 'hostRpc:' + e.data.pnpmHostRpc.method + ' op=' + (e.data.pnpmHostRpc.args && e.data.pnpmHostRpc.args[0] && e.data.pnpmHostRpc.args[0].operation) }); // M1.7A-b4 TEMP DIAG
         if (e.data && e.data.pnpmWasiRpc) report({ type: 'worker-diag', msg: 'wasiRpc:' + e.data.pnpmWasiRpc.namespace + '.' + e.data.pnpmWasiRpc.name }); // M1.7A-b4 TEMP DIAG
         if (e.data && e.data.__emnapi__) report({ type: 'worker-diag', msg: 'emnapi:' + e.data.__emnapi__.type }); // M1.7A-b4 TEMP DIAG
@@ -7794,7 +7794,7 @@ const stages = [
   // pause semantics are unchanged (a later resume() re-arms a fresh read,
   // same as real node restarting a read after read_stop). The close(fd-0)
   // cancel inside the fs binding covers the destroy path.
-  ['carapace/stdin-pause-hook', () => {
+  ['nodine/stdin-pause-hook', () => {
     let hooked = false;
     try {
       const s = realmProcess && Object.prototype.hasOwnProperty.call(realmProcess, 'stdin')
@@ -7807,8 +7807,8 @@ const stages = [
           get() {
             const stream = getStdin.call(this);
             try {
-              if (stream && !stream.__carapacePauseHooked && typeof stream.pause === 'function') {
-                stream.__carapacePauseHooked = true;
+              if (stream && !stream.__nodinePauseHooked && typeof stream.pause === 'function') {
+                stream.__nodinePauseHooked = true;
                 const origPause = stream.pause.bind(stream);
                 stream.pause = () => {
                   try { platformMessagePost({ type: 'stdin-pause-fired' }); } catch {}
@@ -7885,9 +7885,9 @@ function pendingAsyncFsOps() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Carapace runtime entry — message-driven (no baked-in tests). The page
+// 6. Nodine runtime entry — message-driven (no baked-in tests). The page
 //    spawns this worker per process run and sends ONE init message:
-//      { type: 'carapace-init', ksmMemory, epIndex, generation, pid,
+//      { type: 'nodine-init', ksmMemory, epIndex, generation, pid,
 //        files: { '/project/main.js': 'source', ... }, entry, code, argv }
 //    files are seeded THROUGH THE KERNEL (mkdir -p + open/write/close via
 //    the transport) before the Node bootstrap chain runs.
@@ -7908,7 +7908,7 @@ async function main() {
   // B8 ENV FIX: realmProcess is built at MODULE TOP (before this await),
   // so its env is ALWAYS the hardcoded fallback — INIT was still null when
   // the IIFE ran. Every spawn therefore saw only HOME/LANG/NODE_ENV/PATH
-  // regardless of the env the supervisor posted with carapace-init
+  // regardless of the env the supervisor posted with nodine-init
   // (verified live: postMessage carried MYVAR=zig; process.env did not).
   // Rebuild env HERE, from the real init contract, before the bootstrap
   // chain consumes it (safeGetenv, mode plumbing, Node's internal env).
@@ -7931,9 +7931,9 @@ async function main() {
   // (a real-terminal child reads the kernel FIFO even when fd1/2 are piped —
   // create-expo's prompt); fd-1/2 writes keep STDIO_MODE (pipe = channel relay).
   const initArr = INIT?.stdioArr;
-  globalThis.__carapaceStdioArr = Array.isArray(initArr) && initArr.length === 3 ? initArr : null;
-  if (globalThis.__carapaceStdioArr && STDIO_MODE.includes(',')) {
-    STDIO_MODE = globalThis.__carapaceStdioArr[1] === 'pipe' || globalThis.__carapaceStdioArr[2] === 'pipe' ? 'pipe' : 'inherit';
+  globalThis.__nodineStdioArr = Array.isArray(initArr) && initArr.length === 3 ? initArr : null;
+  if (globalThis.__nodineStdioArr && STDIO_MODE.includes(',')) {
+    STDIO_MODE = globalThis.__nodineStdioArr[1] === 'pipe' || globalThis.__nodineStdioArr[2] === 'pipe' ? 'pipe' : 'inherit';
   }
   CHANNEL_PORT = INIT?.channelPort || null;
   // B1-PREVIEW: main()-side install (idempotent — the module-top listener
@@ -7955,7 +7955,7 @@ async function main() {
       // __stdinOwned (set by the 'stdin-own' channel message) counts as
       // piped too — the supervisor routes targeted stdin-bytes here while
       // this process owns the terminal, bypassing the kernel broadcast.
-      const fd0Piped = globalThis.__stdinOwned || (globalThis.__carapaceStdioArr ? globalThis.__carapaceStdioArr[0] === 'pipe' : STDIO_MODE === 'pipe');
+      const fd0Piped = globalThis.__stdinOwned || (globalThis.__nodineStdioArr ? globalThis.__nodineStdioArr[0] === 'pipe' : STDIO_MODE === 'pipe');
       if (m.type === 'stdin-own') {
         // B9 TERMINAL-OWNER: grant/revoke terminal-stdin ownership. While
         // owned, fd-0 reads come from the channel queue (targeted bytes)
@@ -8049,10 +8049,10 @@ async function main() {
   // registry metadata fetch through the harness's network.request). The
   // vendored undici shim already maps fetch/WHATWG classes onto the
   // platform's; the globals get the same treatment. The runtime's own
-  // code uses the __carapaceNativeAbortController capture directly.
+  // code uses the __nodineNativeAbortController capture directly.
   try {
-    globalThis.AbortController = __carapaceNativeAbortController;
-    if (__carapaceNativeAbortSignal) globalThis.AbortSignal = __carapaceNativeAbortSignal;
+    globalThis.AbortController = __nodineNativeAbortController;
+    if (__nodineNativeAbortSignal) globalThis.AbortSignal = __nodineNativeAbortSignal;
   } catch {}
   // P2-006-008: the stdio devices ARE the interactive terminal (kernel-fed
   // stdin with EAGAIN semantics, supervisor-relayed stdout/stderr) — report
@@ -8075,9 +8075,9 @@ async function main() {
       // these are implemented as actual writes — npm's spinner then redraws
       // ONE line instead of scrolling a new spinner per frame (the "wall of
       // ⠙⠹⠸" observed live). clearLine(dir): 0=right, 1=whole, -1=left.
-      if (typeof s.cursorTo !== 'function' || s.__carapaceStubCursor) {
+      if (typeof s.cursorTo !== 'function' || s.__nodineStubCursor) {
         try {
-          s.__carapaceStubCursor = true;
+          s.__nodineStubCursor = true;
           s.cursorTo = function (x, y) {
             if (y === undefined || y === null) { this.write(typeof x === 'number' && x > 0 ? '\r' + (x < 80 ? '\x1b[' + x + 'C' : '') : '\r'); }
             else { this.write('\x1b[' + (y + 1) + ';' + (x + 1) + 'H'); }
@@ -8317,7 +8317,7 @@ async function waitForQuit() {
         // E6 PIPELINE FIX: per-fd stdio (see the main() dispatcher) — fd0
         // piped with fd1/2 inherited must still receive stdin-bytes.
         // B9: 'stdin-own' handled here too (post-handshake dispatcher).
-        const fd0Piped = globalThis.__stdinOwned || (globalThis.__carapaceStdioArr ? globalThis.__carapaceStdioArr[0] === 'pipe' : STDIO_MODE === 'pipe');
+        const fd0Piped = globalThis.__stdinOwned || (globalThis.__nodineStdioArr ? globalThis.__nodineStdioArr[0] === 'pipe' : STDIO_MODE === 'pipe');
         if (m.type === 'stdin-own') {
           globalThis.__stdinOwned = !!m.own;
           if (m.own) deliverStdinToWaiters();
@@ -8428,18 +8428,18 @@ const pnpm_wasmNodeSupport = (() => {
     // ports = { toParent, fromParent } platform MessagePorts (from a
     // MessageChannel owned by THIS runtime context).
     const src = [
-      "const __carapacePorts = self.__CARAPACE_WORKER_PORTS__;", // set via transfer? no — see below
+      "const __nodinePorts = self.__NODINE_WORKER_PORTS__;", // set via transfer? no — see below
     ];
     return src.join('\n');
   }
   function buildCjsInline(absPath, seen) {
     // CJS dep: execute NOW in the parent (real CJS machinery) and inline
     // the namespace as a blob. The runtime's esmCjsBridgeBlob needs the
-    // __CARAPACE_CJS_REGISTRY which lives in THIS context — but the blob
+    // __NODINE_CJS_REGISTRY which lives in THIS context — but the blob
     // executes in the NESTED worker. So we inline the namespace VALUES
     // directly as an object literal graph.
     if (seen.has(absPath)) return seen.get(absPath);
-    const mod = globalThis.__carapaceCjsRequire(absPath);
+    const mod = globalThis.__nodineCjsRequire(absPath);
     const named = mod && (typeof mod === 'object' || typeof mod === 'function') ? Object.keys(mod).slice(0, 512) : [];
     const lines = [];
     for (const k of named) {
@@ -8556,11 +8556,11 @@ const pnpm_wasmNodeSupport = (() => {
       'const __parentEmitter = __makeEventTarget();',
       '// M1.7A-b4 FIX (install hang): drain the BOOT INBOX — messages the',
       '// parent posted while the module graph was still evaluating (the',
-      '// b4 boot trampoline queues them on __CARAPACE_WORKER_INBOX__).',
+      '// b4 boot trampoline queues them on __NODINE_WORKER_INBOX__).',
       '// wasi-threads posts load/start immediately on pool-exhaustion',
       '// spawns; without this drain those messages never reach the entry.',
-      'const __wtDiagP = (m) => { try { self.postMessage({ __carapaceWtDiag: true, msg: "prelude:" + m, t: Date.now() }); } catch {} };',
-      'const __earlyMessages = (globalThis.__CARAPACE_WORKER_INBOX__ || []).splice(0);',
+      'const __wtDiagP = (m) => { try { self.postMessage({ __nodineWtDiag: true, msg: "prelude:" + m, t: Date.now() }); } catch {} };',
+      'const __earlyMessages = (globalThis.__NODINE_WORKER_INBOX__ || []).splice(0);',
       '__wtDiagP("eval; inbox=" + __earlyMessages.length + " types=" + JSON.stringify(__earlyMessages.map((m) => m && m.__emnapi__ && m.__emnapi__.type)));',
       'let __pumped = false;',
       'self.onmessage = (e) => {',
@@ -8577,7 +8577,7 @@ const pnpm_wasmNodeSupport = (() => {
       '  set onmessage (fn) { self.onmessage = (e) => fn && fn({ data: e.data }); }',
       '}',
       'const parentPort = new ParentPort();',
-      'const workerData = globalThis.__CARAPACE_WORKER_DATA__;',
+      'const workerData = globalThis.__NODINE_WORKER_DATA__;',
       'export { parentPort, workerData };',
       'export const isMainThread = false;',
       'export const threadId = 1;',

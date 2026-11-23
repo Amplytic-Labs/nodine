@@ -91,7 +91,7 @@ export class Container {
    * of its assets relative to that URL, so the bundle can live in any
    * directory the host serves; for preview service-worker registration it
    * should sit at the origin root, or the server must send a
-   * `Service-Worker-Allowed: /` header for `sw-opencontainer.js` (see the
+   * `Service-Worker-Allowed: /` header for `sw-nodine.js` (see the
    * README).
    *
    * @throws {@link EnvironmentUnsupportedError} when the browser cannot host
@@ -138,7 +138,7 @@ export class Container {
     const supervisor = new mod.Supervisor(term, statusEls, options.perf ? { perf: true } : undefined);
     // BootOptions.env (public API): page-owned base env vars layered over
     // the runtime's own baseEnv — host-side persistence for knobs like
-    // CARAPACE_NETWORK_MODE that must reach every spawned process.
+    // NODINE_NETWORK_MODE that must reach every spawned process.
     if (options.env) {
       for (const [k, v] of Object.entries(options.env)) supervisor.baseEnv[k] = v;
     }
@@ -206,7 +206,7 @@ export class Container {
       // must live at the origin root (or the server must send
       // Service-Worker-Allowed: / for it). If registration fails, boot
       // continues and preview events simply never fire.
-      const swUrl = new URL('sw-opencontainer.js', this.runtimeBase).href;
+      const swUrl = new URL('sw-nodine.js', this.runtimeBase).href;
       const reg = await navigator.serviceWorker.register(swUrl, { scope: '/' });
       await navigator.serviceWorker.ready;
       let sw = navigator.serviceWorker.controller || reg.active || reg.installing || reg.waiting;

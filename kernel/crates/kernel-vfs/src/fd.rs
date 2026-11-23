@@ -406,12 +406,12 @@ pub struct ProcessRecord {
     pub endpoints: u32,
     pub fds: FdTable,
     /// P2-006-008-3: PER-PROCESS terminal input FIFO. The host feed fans out
-    /// a copy into every live process's FIFO (carapace_stdin_feed), and fd-0
+    /// a copy into every live process's FIFO (nodine_stdin_feed), and fd-0
     /// reads drain the CALLING process's own copy. Root cause this fixes: a
     /// shared single FIFO let a parent's zombie stdin reader (npm's `read`
     /// package: readline closed + pause(), but the in-flight EAGAIN poll kept
     /// consuming) RACE the foreground child for every keystroke — observed
-    /// live in the Expo golden flow: 'CarapaceExpoGolden' arrived as
+    /// live in the Expo golden flow: 'NodineExpoGolden' arrived as
     /// 'racexn' and the Enter was stolen entirely (create-expo waited at the
     /// name prompt for 20 minutes). Real ttys arbitrate one-reader-per-byte at
     /// the OS level and libuv's readStop actually detaches a paused reader; a
@@ -422,7 +422,7 @@ pub struct ProcessRecord {
     pub stdin_in: VecDeque<u8>,
 }
 
-/// Diag counters (kernel-core carapace_diag fields 27-33; FD_SPEC §8).
+/// Diag counters (kernel-core nodine_diag fields 27-33; FD_SPEC §8).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FdCounters {
     pub ofd_mints: u64,
@@ -561,7 +561,7 @@ impl FdState {
     }
 
     /// THE shared teardown (FC-2): invoked from endpoint_drain (exit) AND
-    /// carapace_endpoint_died (death) — pid read from the slot before the
+    /// nodine_endpoint_died (death) — pid read from the slot before the
     /// DEAD store in both paths. Gated on endpoints == 0 (FC-3).
     ///
     /// Order: endpoints −= 1 → (at 0 only:) walk fd slots (stdio slots:
@@ -746,7 +746,7 @@ impl FdState {
         match kind {
             KIND_DEV_STDIN => {
                 // P2-006-007: the stdin device is now a real input source —
-                // the host feeds the FIFO (carapace_stdin_feed) and reads
+                // the host feeds the FIFO (nodine_stdin_feed) and reads
                 // drain it. Empty ⇒ EAGAIN (the ADR-0008 Phase-2
                 // "read = EOF" divergence is SUPERSEDED; the bridge's async
                 // stdin stream retries on EAGAIN — documented divergence).
@@ -1074,7 +1074,7 @@ impl FdState {
         Ok(())
     }
 
-    /// Diagnostic snapshot (carapace_diag fields 27-33; FD_SPEC §8).
+    /// Diagnostic snapshot (nodine_diag fields 27-33; FD_SPEC §8).
     pub fn diag(&self, field: u32) -> i64 {
         match field {
             27 => self.ofds.live as i64,

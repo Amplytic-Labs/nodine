@@ -43,8 +43,7 @@
     "webassembly",
     "container",
     "virtual-filesystem",
-    "npm",
-    "webcontainer"
+    "npm"
   ],
   "repository": {
     "type": "git",
@@ -68,7 +67,8 @@
     "check": "npm run build && npm run build:runtime && npm pack --dry-run",
     "smoke": "node scripts/smoke-install.cjs",
     "smoke:vite": "node scripts/smoke-vite.cjs",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "smoke:expo": "node scripts/smoke-expo.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

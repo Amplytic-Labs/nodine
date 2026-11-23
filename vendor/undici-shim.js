@@ -8,13 +8,13 @@
 // EventSource/WebSocket), createFastMessageEvent, and the global-dispatcher
 // plumbing (EnvHttpProxyAgent — guarded by NODE_USE_ENV_PROXY).
 //
-// In Carapace the transport is the BROWSER's web platform: fetch is the
+// In Nodine the transport is the BROWSER's web platform: fetch is the
 // platform fetch (already relay-routed by the http bridge), and the WHATWG
 // classes are the platform's own. The runtime worker exposes the captured
-// platform classes on globalThis.__carapacePlatformWeb BEFORE the Node
+// platform classes on globalThis.__nodinePlatformWeb BEFORE the Node
 // bootstrap replaces the globals with lazy undici-backed versions (reading
 // them from globalThis at shim-eval time would be circular).
-const P = globalThis.__carapacePlatformWeb || {};
+const P = globalThis.__nodinePlatformWeb || {};
 
 module.exports = {
   // fetch path (internal/bootstrap/web/exposed-window-or-worker.js)

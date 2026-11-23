@@ -31,7 +31,7 @@ export interface BootOptions {
    *   cross-origin isolation).
    * - For previews (`enablePreview`), the preview service worker registers
    *   with scope `/` — so either serve the bundle at the origin root or
-   *   send a `Service-Worker-Allowed: /` header for `sw-opencontainer.js`.
+   *   send a `Service-Worker-Allowed: /` header for `sw-nodine.js`.
    */
   runtimeUrl?: string | URL;
 
@@ -108,7 +108,7 @@ export interface BootOptions {
    *
    * @remarks
    * Host-side persistence for environment knobs the embedding page owns —
-   * most importantly `CARAPACE_NETWORK_MODE` ('direct' | 'proxy'), which
+   * most importantly `NODINE_NETWORK_MODE` ('direct' | 'proxy'), which
    * selects how the runtime's fetch bridge reaches package registries.
    * The DEFAULT is 'direct' (this package ships self-contained on static
    * hosts): allowlisted anonymous HTTPS GET/HEAD requests go straight from

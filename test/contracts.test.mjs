@@ -73,6 +73,10 @@ test('error classes carry distinct codes and readable messages', () => {
 
 test('error messages avoid the previous product name', () => {
   // Naming decision: the SDK must not use any former product name anywhere.
+  // The former names are assembled from fragments on purpose so this file —
+  // and the repo's whole text surface — never spells them out.
+  const formerNames = ['cara' + 'pace', 'open' + 'container', 'web' + 'container'];
+  const patterns = formerNames.map((n) => new RegExp(n, 'i'));
   const samples = [
     new BootFailedError('core').message,
     new NotYetImplementedError('Container.spawn').message,
@@ -80,7 +84,9 @@ test('error messages avoid the previous product name', () => {
     new ContainerDestroyedError().message,
   ];
   for (const msg of samples) {
-    assert.ok(!/webcontainer/i.test(msg), `message leaked a former name: ${msg}`);
+    for (const re of patterns) {
+      assert.ok(!re.test(msg), `message leaked a former name: ${msg}`);
+    }
   }
 });
 

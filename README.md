@@ -162,7 +162,7 @@ onto it. Dev servers (Vite, Metro/expo, webpack-serve,
   (banner + interactive mode), preview events just never fire.
 - The service worker registers with scope `/`, so the bundle can live in
   any directory as long as the server sends
-  `Service-Worker-Allowed: /` on `sw-opencontainer.js` (the Vite plugin
+  `Service-Worker-Allowed: /` on `sw-nodine.js` (the Vite plugin
   does). Or serve the bundle at the origin root — then no extra header is
   needed anywhere.
 
@@ -181,7 +181,7 @@ HTTP from spawned processes goes through a fetch-bridged network stack.
 The default mode is `direct`: allowlisted anonymous HTTPS GET/HEAD requests
 (npm registry and friends) go straight from the browser to the registry —
 no server-side relay needed. Hosts that want to proxy egress can set
-`env: { CARAPACE_NETWORK_MODE: 'proxy' }` and serve a same-origin `/egress`
+`env: { NODINE_NETWORK_MODE: 'proxy' }` and serve a same-origin `/egress`
 relay.
 
 Known limits, stated plainly:
@@ -211,7 +211,7 @@ requirement for SharedArrayBuffer, not a Nodine policy:
 
 If the bundle is served outside the origin root (for example
 `/nodine/…`), also add `Service-Worker-Allowed: /` for
-`sw-opencontainer.js` (or serve the bundle at the root and skip this).
+`sw-nodine.js` (or serve the bundle at the root and skip this).
 
 ## Repository layout
 
@@ -222,7 +222,7 @@ If the bundle is served outside the origin root (for example
 │   ├── runtime-worker.mjs    Node.js execution worker (one per process)
 │   ├── kernel-driver.js     kernel bootstrapping worker
 │   ├── kernel_core.wasm     the Rust/WASM microkernel (binary)
-│   ├── sw-opencontainer.js  same-origin preview gateway (service worker)
+│   ├── sw-nodine.js  same-origin preview gateway (service worker)
 │   ├── libsources.json       vendored Node v26.13.0 lib sources (derived)
 │   ├── npm-seed-blob         /usr tree seed: npm, /bin/sh, coreutils (derived)
 │   └── unpkg/                pako / @noble/hashes / js-md5 ESM (derived)

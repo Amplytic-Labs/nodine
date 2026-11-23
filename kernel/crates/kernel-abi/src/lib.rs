@@ -1,15 +1,15 @@
-//! kernel-abi — the normative Carapace kernel ABI definition.
+//! kernel-abi — the normative Nodine kernel ABI definition.
 //!
 //! VERBATIM TRANSCRIPTION of KERNEL_ABI.md v1.0.1 §24 (frozen P2-002).
 //! The markdown artifact is the source of truth; this file is generated from it
 //! and MUST NOT drift (P2-003 establishes the sync check; any edit requires an
 //! ABI minor-version bump and a matching §24 update).
 //!
-//! SPDX-License-Identifier: Apache-2.0 OR MIT (Carapace project)
+//! SPDX-License-Identifier: Apache-2.0 OR MIT (Nodine project)
 
 #![allow(dead_code)]
 
-//! kernel-abi — the Carapace kernel ABI, version 1.0.
+//! kernel-abi — the Nodine kernel ABI, version 1.0.
 //!
 //! ONE ABI, two endpoint classes (MODE_SYNC / MODE_ASYNC). All layouts are
 //! little-endian, 8-byte aligned, `#[repr(C)]`. Every constant here is part of
@@ -46,7 +46,7 @@ pub const ABI_VERSION_MAJOR: u16 = 1;
 /// OP_TRANSPORT_PROBE (§29/§7.7); §17.3 ASYNC_DEFER_LIMIT named = 40 passes;
 /// §18 cancellation gap fills (cancel-own status 0 on both paths; cooperative
 /// abort = ECANCELED kind NONE; pre-pass cancel resolution normative; sync-mode
-/// OP_CANCEL ⇒ CARAPACE_EINVAL_REQUEST). Additive only: no layout change, no
+/// OP_CANCEL ⇒ NODINE_EINVAL_REQUEST). Additive only: no layout change, no
 /// semantic change to any existing op. `abi_compatible` keeps v1.0.1 bridges
 /// working against a v1.0.2 kernel.
 pub const ABI_VERSION_MINOR: u16 = 2;
@@ -187,7 +187,7 @@ pub enum Op {
 }
 
 impl Op {
-    /// True if defined and implemented in v1.0 (stubs return CARAPACE_ENOOP).
+    /// True if defined and implemented in v1.0 (stubs return NODINE_ENOOP).
     pub const fn implemented(self) -> bool {
         matches!(self,
             Op::AbiProbe | Op::CapsQuery
@@ -257,18 +257,18 @@ pub const KERNEL_CAP_PERSIST: u32 = 1 << 3;
 // 7. Error codes (KERNEL_ABI.md §14)
 // ---------------------------------------------------------------------------
 
-/// CARAPACE_* protocol/health errors: status values with no uv analog.
+/// NODINE_* protocol/health errors: status values with no uv analog.
 /// uv errnos (Appendix A of KERNEL_ABI.md; values frozen from Node v26.13.0
 /// Linux) occupy -1..-4095 and are re-exported in `uv` below.
-pub const CARAPACE_EINVAL_REQUEST: i32 = -0x1000_0000;
-pub const CARAPACE_ENOOP: i32 = -0x1000_0001;
-pub const CARAPACE_EABI_VERSION: i32 = -0x1000_0002;
-pub const CARAPACE_ESHUTDOWN: i32 = -0x1000_0003;
-pub const CARAPACE_ETIMEOUT: i32 = -0x1000_0004;
-pub const CARAPACE_EKERNEL_DEAD: i32 = -0x1000_0005;
-pub const CARAPACE_EENDPOINT: i32 = -0x1000_0006;
-pub const CARAPACE_EPROTOCOL: i32 = -0x1000_0007;
-pub const CARAPACE_EBADCORRELATION: i32 = -0x1000_0008;
+pub const NODINE_EINVAL_REQUEST: i32 = -0x1000_0000;
+pub const NODINE_ENOOP: i32 = -0x1000_0001;
+pub const NODINE_EABI_VERSION: i32 = -0x1000_0002;
+pub const NODINE_ESHUTDOWN: i32 = -0x1000_0003;
+pub const NODINE_ETIMEOUT: i32 = -0x1000_0004;
+pub const NODINE_EKERNEL_DEAD: i32 = -0x1000_0005;
+pub const NODINE_EENDPOINT: i32 = -0x1000_0006;
+pub const NODINE_EPROTOCOL: i32 = -0x1000_0007;
+pub const NODINE_EBADCORRELATION: i32 = -0x1000_0008;
 
 /// The libuv errno table (Linux), byte-identical to
 /// poc/p1-poc/uv-errno-linux.txt (generated from Node v26.13.0's vendored
@@ -388,7 +388,7 @@ pub struct RequestRecord {
 pub struct CompletionRecord {
     pub req_id: u64,     // +0x00 completed request id (events: watch id)
     pub op: u32,         // +0x08 op echo
-    pub status: i32,     // +0x0C 0 | uv errno | CARAPACE_* (§14)
+    pub status: i32,     // +0x0C 0 | uv errno | NODINE_* (§14)
     pub result_kind: u32,// +0x10 RESULT_*
     pub result_len: u32, // +0x14
     pub result_off: u32, // +0x18 area-relative, 8-aligned

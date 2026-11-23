@@ -20,7 +20,7 @@ Files involved in the boot:
 | `runtime/kernel_core.wasm` | The Rust microkernel binary |
 | `runtime/libsources.json` | Vendored Node.js v26.13.0 library sources (431 modules) |
 | `runtime/npm-seed-blob`, `runtime/npm-manifest.json` | The container's `/usr` image |
-| `runtime/sw-opencontainer.js` | Preview service worker (scope `/`) |
+| `runtime/sw-nodine.js` | Preview service worker (scope `/`) |
 | `runtime/runtime-worker.mjs` | One module worker per process |
 
 ## The whole boot at a glance
@@ -44,7 +44,7 @@ sequenceDiagram
     Sup->>Sup: create shared Memory 1302 pages
     Sup->>Drv: boot RPC, memory + wasm bytes
     Drv->>Wasm: instantiate with shared memory
-    Drv->>Wasm: carapace_init
+    Drv->>Wasm: nodine_init
     Wasm-->>Drv: control block valid
     Drv-->>Sup: boot-ok, version + caps
     Drv->>Wasm: pump loop on doorbell
@@ -64,7 +64,7 @@ sequenceDiagram
     Sup->>Drv: alloc-endpoint
     Drv-->>Sup: endpoint index + generation
     Sup->>Wk: adopt warm worker or spawn new
-    Sup->>Wk: carapace-init, memory + endpoint + libsources
+    Sup->>Wk: nodine-init, memory + endpoint + libsources
     Wk->>Wasm: attach endpoint transport
     Wk-->>Sup: proc-ready
     Sup-->>SDK: process record
@@ -151,7 +151,7 @@ The runtime resolves every asset relative to `supervisor.mjs`'s own URL
 So the bundle works from any directory the host serves. The SDK also computes
 `runtimeBase = new URL(runtimeUrl, document.baseURI)` for the one asset that
 is not resolved by the supervisor itself: the preview service worker
-(`sw-opencontainer.js`, loaded next to `supervisor.mjs` — see section 5).
+(`sw-nodine.js`, loaded next to `supervisor.mjs` — see section 5).
 
 After the import, the SDK constructs the supervisor headlessly:
 `new Supervisor(term, statusEls, perf?)` where `term` is a
@@ -160,7 +160,7 @@ After the import, the SDK constructs the supervisor headlessly:
 stubs for the five status slots the supervisor writes. If the host passed
 `BootOptions.env`, those variables are layered into the supervisor's
 `baseEnv` now — before any process exists — so knobs like
-`CARAPACE_NETWORK_MODE` reach every spawned process.
+`NODINE_NETWORK_MODE` reach every spawned process.
 
 `assertRuntimeSurface()` then verifies the 24 members the SDK actually calls:
 `boot`, `seed`, `spawnProcess`, `signalTree`, `shutdown`, `initPreviewSW`,
@@ -194,7 +194,7 @@ kernel for the page:
 4. **The boot RPC.** One `boot` message carrying the KSM and the wasm bytes,
    with a 60 s timeout. In the driver: instantiate the module with the KSM
    as its imported `env.memory`, call the kernel entry point
-   (`carapace_init`), then validate the control block at memory offset 0 —
+   (`nodine_init`), then validate the control block at memory offset 0 —
    two magic words (`CARA`, `PCE1`) and state word 1. On success the driver
    replies `boot-ok { version, state, caps, maxEp, stride, stackPointer }`
    and enters its pump loop: the driver never busy-loops — it parks in
@@ -282,11 +282,11 @@ before anything below runs):
 2. **Preview bridge** (`initPreviewBridge`, skipped when
    `enablePreview: false`). This is best-effort by design — any failure
    leaves the container fully working, just without preview events:
-   - Register `sw-opencontainer.js` (resolved against `runtimeBase`, i.e.
+   - Register `sw-nodine.js` (resolved against `runtimeBase`, i.e.
      next to `supervisor.mjs`) with **scope `/`** so it can intercept
      origin-rooted `/preview/…` URLs. Scope `/` from a non-root script URL
      requires the server to send `Service-Worker-Allowed: /` for
-     `sw-opencontainer.js` — the Vite plugin does; other hosts must (or
+     `sw-nodine.js` — the Vite plugin does; other hosts must (or
      serve the bundle at the origin root, where no header is needed).
    - Wait for `navigator.serviceWorker.ready`, then locate the active
      worker instance (controller, or the registering one, polling up to
@@ -356,7 +356,7 @@ the SDK — listening on `port1` — turns them into the
    `WORKER_URL` is `runtime-worker.mjs` resolved against the supervisor's
    own URL, carrying the supervisor module's `?v=` content-stamp if
    present, so a re-staged bundle can never boot a stale worker from cache.
-5. **`carapace-init`.** The frozen init message posted to the worker:
+5. **`nodine-init`.** The frozen init message posted to the worker:
 
    | Field | Content |
    | --- | --- |
@@ -383,7 +383,7 @@ the SDK — listening on `port1` — turns them into the
 first `await` — so an init message posted during the libsources/uvmap window
 is never lost. The module top parses libsources (handed in, or fetched as a
 fallback), fetches `uvmap.json` (libuv's errno map), captures platform
-globals, then parks at `await initPromise` until a `carapace-init` arrives.
+globals, then parks at `await initPromise` until a `nodine-init` arrives.
 On init it attaches its transport to its endpoint in the KSM, reports
 `proc-ready`, and runs the entry through the genuine Node bootstrap chain
 from the libsources. The supervisor marks the record ready on `proc-ready`
@@ -399,7 +399,7 @@ supervisor's `warmCreate()` starts such a worker and, as soon as the
 page-wide libsources parse settles, posts it a `warm-preinit` message with
 the parsed payload (the message queues until the worker installs its
 handler; the parked worker keeps the copy but stays parked — only a real
-`carapace-init` resolves `initPromise`). A warm worker's `onmessage` is left
+`nodine-init` resolves `initPromise`). A warm worker's `onmessage` is left
 unset until adoption, so its queued startup reports simply flow to the
 adopting process's handler.
 
@@ -408,7 +408,7 @@ adopting process's handler.
   burst of spawns never pays pool refill on the interactive path. It runs
   once after the boot-time libsources parse and after every spawn.
 - **Adoption:** `warmWorkers.pop()`; the pooled spawn then costs only the
-  `carapace-init` post and the worker's resume path (transport attach →
+  `nodine-init` post and the worker's resume path (transport attach →
   `proc-ready` → entry). The fresh-worker path remains as the fallback when
   the pool is drained.
 - **Drain:** `warmDrain()` terminates every pooled worker at shutdown.
@@ -425,7 +425,7 @@ flowchart TD
     D -- "yes: index + generation" --> E{"warm pool non-empty?"}
     E -- "yes" --> F["pop pooled worker"]
     E -- "no" --> G["new Worker runtime-worker.mjs"]
-    F --> H["post carapace-init"]
+    F --> H["post nodine-init"]
     G --> H
     H --> I["worker: attach transport, proc-ready, run entry"]
     I --> J["warmRefillSoon: refill to 2 after 2 s"]

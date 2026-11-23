@@ -21,7 +21,7 @@
 //                                           len, syncres} — one §11.2 sync-
 //                                           mailbox fs op on ENDPOINT 0
 //   stdin-feed {bytes}                    → stdin-fed {ok} — writes the 0x2100
-//                                           scratch + carapace_stdin_feed
+//                                           scratch + nodine_stdin_feed
 //
 // NOTE (P2-004): the P2-003 reserved-word shutdown hack (KSM word 0x2004) is
 // RETIRED — §5.2 reserved words stay zero; shutdown is postMessage.
@@ -58,7 +58,7 @@ let stopped = false;
 
 // ---- E5 (Step-0.5): driver-thread accounting --------------------------------
 // Gate: the supervisor boots the driver with perf:true (page ?perf=1).
-// Accumulates: wall time inside carapace_pump (busy), pump call count,
+// Accumulates: wall time inside nodine_pump (busy), pump call count,
 // max single pump, time parked in the doorbell Atomics.waitAsync, and the
 // kfs-sync handler's inline pump. Pushed to the supervisor every 5 s as
 // {type:'driver-perf'}; ops/sec come from the workers' own op histograms
@@ -97,10 +97,10 @@ function driverPerfInit() {
   }, 5000);
 }
 function pumpTimed(now, budget) {
-  if (!DRIVER_PERF) return exports.carapace_pump(now, budget);
+  if (!DRIVER_PERF) return exports.nodine_pump(now, budget);
   const t0 = performance.now();
   try {
-    return exports.carapace_pump(now, budget);
+    return exports.nodine_pump(now, budget);
   } finally {
     const ms = performance.now() - t0;
     DRIVER_PERF.busyMs += ms;
@@ -130,7 +130,7 @@ self.addEventListener('message', async (ev) => {
           crSeq: new Int32Array(buf, base + EP_CRH + 0x08, 1),
         });
       }
-      const rc = exports.carapace_init(1, BigInt(Date.now()), 0);
+      const rc = exports.nodine_init(1, BigInt(Date.now()), 0);
       if (rc !== 0) { self.postMessage({ type: 'boot-failed', tag: msg.tag, rc }); return; }
       const magicOk = I32[0] === KCTL_MAGIC_LO && I32[1] === KCTL_MAGIC_HI;
       const version = I32[2], state = I32[KCTL_STATE];
@@ -149,26 +149,26 @@ self.addEventListener('message', async (ev) => {
       return;
     }
     if (msg.type === 'alloc-endpoint') {
-      const index = exports.carapace_alloc_endpoint(msg.pid, msg.caps);
+      const index = exports.nodine_alloc_endpoint(msg.pid, msg.caps);
       const gen = index >= 0 ? Atomics.load(I32, (0x1000 + index * 64 + 0x10) / 4) : 0;
       self.postMessage({ type: 'endpoint-allocated', tag: msg.tag, index, generation: gen, rc: index });
       return;
     }
     if (msg.type === 'endpoint-exit') {
-      const rc = exports.carapace_endpoint_exit(msg.index);
+      const rc = exports.nodine_endpoint_exit(msg.index);
       self.postMessage({ type: 'endpoint-exit-ack', tag: msg.tag, rc });
       return;
     }
     if (msg.type === 'endpoint-died') {
-      const rc = exports.carapace_endpoint_died(msg.index, msg.generation);
+      const rc = exports.nodine_endpoint_died(msg.index, msg.generation);
       self.postMessage({ type: 'endpoint-died-ack', tag: msg.tag, rc });
       return;
     }
     if (msg.type === 'shutdown') {
-      // Graceful drain (§21.1): the kernel sweep runs inside carapace_shutdown;
+      // Graceful drain (§21.1): the kernel sweep runs inside nodine_shutdown;
       // the driver then performs the §16.5 final notify sweep over EVERY
       // endpoint's cr_seq + sm_seq (≤ 64×2 notifies) so no waiter hangs.
-      const rc = exports.carapace_shutdown(BigInt(Date.now()));
+      const rc = exports.nodine_shutdown(BigInt(Date.now()));
       for (let i = 0; i < MAX_ENDPOINTS; i++) {
         Atomics.notify(epViews[i].smSeq, 0, 1);
         Atomics.notify(epViews[i].crSeq, 0, 1);
@@ -185,7 +185,7 @@ self.addEventListener('message', async (ev) => {
     if (msg.type === 'step') {
       // One deterministic pump pass (budget applies). In step mode the main
       // loop does not pump; this is the ONLY pump call.
-      const mask = exports.carapace_pump(BigInt(Date.now()), msg.budget ?? PUMP_OP_BUDGET);
+      const mask = exports.nodine_pump(BigInt(Date.now()), msg.budget ?? PUMP_OP_BUDGET);
       notifyMask(mask);
       self.postMessage({ type: 'stepped', tag: msg.tag, mask: mask.toString(16) });
       return;
@@ -201,7 +201,7 @@ self.addEventListener('message', async (ev) => {
       return;
     }
     if (msg.type === 'diag') {
-      self.postMessage({ type: 'diag-result', tag: msg.tag, ep: msg.ep, field: msg.field, value: exports.carapace_diag(msg.ep, msg.field).toString() });
+      self.postMessage({ type: 'diag-result', tag: msg.tag, ep: msg.ep, field: msg.field, value: exports.nodine_diag(msg.ep, msg.field).toString() });
       return;
     }
     // ---- P2-006-007 additions ----------------------------------------------
@@ -261,7 +261,7 @@ self.addEventListener('message', async (ev) => {
       { // E5: the kfs-sync inline pump is driver busy time too
         const t0 = performance.now();
         try {
-          exports.carapace_pump(BigInt(Date.now()), 0); // budget 0 = unbounded
+          exports.nodine_pump(BigInt(Date.now()), 0); // budget 0 = unbounded
         } finally {
           if (DRIVER_PERF) { DRIVER_PERF.kfsBusyMs += performance.now() - t0; DRIVER_PERF.kfsCalls++; }
         }
@@ -287,7 +287,7 @@ self.addEventListener('message', async (ev) => {
       return;
     }
     // stdin-feed: write the caller's bytes into the 1 KiB kernel scratch at
-    // KSM 0x2100 (u8 view) and call carapace_stdin_feed — the bytes land in
+    // KSM 0x2100 (u8 view) and call nodine_stdin_feed — the bytes land in
     // the kernel stdin FIFO and the foreground process's next fd-0 read
     // drains them (EAGAIN when empty — the worker-side bridge retries).
     // Bounded to the scratch cap; {ok} = accepted byte count (the kernel
@@ -301,7 +301,7 @@ self.addEventListener('message', async (ev) => {
       let accepted = 0;
       if (n > 0 && ksmRef) {
         new Uint8Array(ksmRef.buffer, STDIN_SCRATCH_OFF, n).set(bytes.subarray(0, n));
-        accepted = exports.carapace_stdin_feed(STDIN_SCRATCH_OFF, n);
+        accepted = exports.nodine_stdin_feed(STDIN_SCRATCH_OFF, n);
       }
       self.postMessage({ type: 'stdin-fed', tag: msg.tag, ok: accepted });
       return;
@@ -327,7 +327,7 @@ function notifyMask(asyncMask) {
   // async completions → cr_seq; sync completions (KH sync mask) → sm_seq.
   // Routing them separately keeps sync traffic from spuriously waking the
   // bridges' async waiter chains (measured as real contention on 2 cores).
-  const syncMask = exports.carapace_sync_mask();
+  const syncMask = exports.nodine_sync_mask();
   if (asyncMask === 0n && syncMask === 0n) return;
   const __ntT0 = DRIVER_PERF ? performance.now() : 0;
   let __cr = 0, __sm = 0;
@@ -374,12 +374,12 @@ const decOut = new TextDecoder();
 const decErr = new TextDecoder();
 let stdioTimer = null;
 function drainStdio() {
-  if (!exports.carapace_stdio_drain) return;
+  if (!exports.nodine_stdio_drain) return;
   if (!ksmRef) return;
   const b = ksmRef.buffer; // CURRENT SAB (growth swaps the object)
   for (const stream of [0, 1]) {
     for (;;) {
-      const n = Number(exports.carapace_stdio_drain(stream, KH_SCRATCH_OFF, STDIO_SCRATCH_CAP));
+      const n = Number(exports.nodine_stdio_drain(stream, KH_SCRATCH_OFF, STDIO_SCRATCH_CAP));
       if (n === 0) break;
       // TextDecoder.decode REJECTS views over a SharedArrayBuffer — copy the
       // scratch bytes into a plain ArrayBuffer first (also decouples the post
@@ -425,9 +425,9 @@ async function loop() {
         return;
       }
       notifyMask(mask);
-      if (exports.carapace_pending() === 0n) break;
+      if (exports.nodine_pending() === 0n) break;
       // pending = budget-exhausted work: immediately re-pump. (A deferred
-      // endpoint is never 'pending' — see carapace_pump's doc comment.)
+      // endpoint is never 'pending' — see nodine_pump's doc comment.)
     }
     drainStdio();
     runWatchdog();
@@ -481,6 +481,6 @@ function runWatchdog() {
   const now = Date.now();
   if (now - watchdog.lastAt < watchdog.intervalMs) return;
   watchdog.lastAt = now;
-  const mask = exports.carapace_watchdog(BigInt(now), watchdog.thresholdMs);
+  const mask = exports.nodine_watchdog(BigInt(now), watchdog.thresholdMs);
   if (mask !== 0n) self.postMessage({ type: 'suspect', mask: mask.toString(16) });
 }
