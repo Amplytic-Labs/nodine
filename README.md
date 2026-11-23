@@ -16,7 +16,7 @@ Everything — the filesystem, processes, `npm install`, dev servers — runs
 ## Install
 
 ```sh
-npm install nodine
+npm install @amplytic/nodine
 ```
 
 ## Quickstart (Vite)
@@ -25,7 +25,7 @@ Add the plugin to your `vite.config.js`:
 
 ```js
 import { defineConfig } from 'vite';
-import { nodine } from 'nodine/vite';
+import { nodine } from '@amplytic/nodine/vite';
 
 export default defineConfig({
   plugins: [nodine()],
@@ -35,7 +35,7 @@ export default defineConfig({
 Boot it in your app:
 
 ```ts
-import { Container } from 'nodine';
+import { Container } from '@amplytic/nodine';
 
 const container = await Container.boot();
 

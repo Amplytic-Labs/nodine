@@ -1,5 +1,5 @@
 {
-  "name": "nodine",
+  "name": "@amplytic/nodine",
   "version": "0.4.0",
   "description": "Nodine — a browser-based Node.js runtime. One package: the public API SDK plus the full runtime bundle (Rust/WASM kernel, genuine upstream Node.js v26.13.0, in-browser npm) that runs entirely in the user's browser tab.",
   "license": "AGPL-3.0-only",

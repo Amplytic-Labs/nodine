@@ -147,7 +147,7 @@ The `/usr` image contains npm 12.2.2, @yarnpkg/shell 4.1.3 (behind the `/bin/sh`
 
 ```js
 // vite.config.js
-import { nodine } from 'nodine/vite';
+import { nodine } from '@amplytic/nodine/vite';
 export default { plugins: [nodine()] };
 ```
 

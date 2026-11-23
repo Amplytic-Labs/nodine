@@ -3,7 +3,7 @@
  *
  * ```js
  * // vite.config.js
- * import { nodine } from 'nodine/vite';
+ * import { nodine } from '@amplytic/nodine/vite';
  * export default { plugins: [nodine()] };
  * ```
  * ```
@@ -20,7 +20,7 @@
  * So in the app code the boot call needs no options at all:
  *
  * ```js
- * import { Container } from 'nodine';
+ * import { Container } from '@amplytic/nodine';
  * const container = await Container.boot(); // runtimeUrl defaults to
  *                                           // /nodine/supervisor.mjs
  * ```

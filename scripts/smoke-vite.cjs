@@ -34,7 +34,7 @@ const waitPort = (port, ms = 30000) => new Promise((res, rej) => {
 const INDEX_HTML = `<!doctype html>
 <html><head><meta charset="utf-8"><title>nodine vite smoke</title></head>
 <body><script type="module">
-import { Container } from 'nodine';
+import { Container } from '@amplytic/nodine';
 const results = [];
 window.__smoke = { done: false, results };
 const check = (name, pass, extra) => results.push({ name, pass: !!pass, extra: extra ?? null });
@@ -93,7 +93,7 @@ navigator.serviceWorker.register = async (url, opts) => {
 </script></body></html>`;
 
 const VITE_CONFIG = `import { defineConfig } from 'vite';
-import { nodine } from 'nodine/vite';
+import { nodine } from '@amplytic/nodine/vite';
 export default defineConfig({ plugins: [nodine()] });
 `;
 
@@ -104,8 +104,9 @@ export default defineConfig({ plugins: [nodine()] });
   // 1. pack
   execFileSync('npm', ['pack', '--silent'], { cwd: ROOT, stdio: 'pipe' });
   const { name: pkgName, version: pkgVersion } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  const tgz = path.join(ROOT, `${pkgName}-${pkgVersion}.tgz`);
-  if (!fs.existsSync(tgz)) throw new Error(`pack did not produce ${pkgName}-${pkgVersion}.tgz`);
+  const tgzName = `${pkgName.replace(/^@/, '').replace(/\//g, '-')}-${pkgVersion}.tgz`;
+  const tgz = path.join(ROOT, tgzName);
+  if (!fs.existsSync(tgz)) throw new Error(`pack did not produce ${tgzName}`);
   console.log('[vite-smoke] packed:', fs.statSync(tgz).size, 'bytes');
 
   // 2. real vite project

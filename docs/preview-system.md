@@ -21,7 +21,7 @@ boot and maps runtime events onto the public `Container` API.
 ## 1. What the user sees
 
 ```js
-import { Container } from 'nodine';
+import { Container } from '@amplytic/nodine';
 
 const container = await Container.boot(); // preview is enabled by default
 
