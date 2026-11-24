@@ -1,5 +1,9 @@
 # Nodine
 
+<p align="center">
+  <img src="assets/Nodine-logo.svg" width="120" alt="Nodine logo" />
+</p>
+
 A **real Node.js runtime that runs entirely inside the browser tab** — no
 server round-trips, no cloud VMs, no fake terminal.
 
@@ -233,7 +237,8 @@ If the bundle is served outside the origin root (for example
 │                   smoke-install.cjs, smoke-vite.cjs
 ├── test/           node --test contracts + adapter tests; browser E2E
 ├── examples/demo/  runnable end-to-end demo page + COI dev server
-└── docs/           architecture + per-subsystem deep dives
+├── docs/           architecture + per-subsystem deep dives
+└── assets/         brand assets (Nodine-logo.svg/png, Nodine-text-logo.svg)
 ```
 
 The derived artifacts (marked above) are **committed**, so a fresh clone is

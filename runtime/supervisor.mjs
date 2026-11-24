@@ -52,6 +52,11 @@ const WORKER_URL = (() => {
   } catch { return 'runtime-worker.mjs'; }
 })();
 
+// Worker-safe diagnostics sink: `window.__p2007` on the main thread, no-op in
+// a Worker context (where `window` is not defined — the VS Code extension
+// host embeds this supervisor inside a worker).
+const DIAG = (typeof window !== 'undefined' && window.__p2007) || undefined;
+
 // ---------------------------------------------------------------------------
 // Terminal emulator (80×30 viewport, ≥5000-line scrollback, minimal ANSI set)
 // ---------------------------------------------------------------------------
@@ -1205,13 +1210,13 @@ export class Supervisor {
       // P2-006-008: quit-quiet carries the liveness ring — surface it (the
       // report FETCH can be aborted by terminate(); the message cannot).
       if (m.type === 'quit-quiet' && Array.isArray(m.life)) {
-        window.__p2007 && window.__p2007.logs.push('worker ' + proc.pid + ': quit-quiet LIFE ' + m.life.slice(-14).join(' / '));
+        DIAG && DIAG.logs.push('worker ' + proc.pid + ': quit-quiet LIFE ' + m.life.slice(-14).join(' / '));
       } else if (m.type === 'life-snap' && m.snap != null) {
         // B21-DIAG: life-snap carried the snapshot but the formatter dropped
         // it — wedge diagnosis needs the counter state while looping.
-        window.__p2007 && window.__p2007.logs.push('worker ' + proc.pid + ': life-snap ' + String(m.snap).slice(0, 400));
+        DIAG && DIAG.logs.push('worker ' + proc.pid + ': life-snap ' + String(m.snap).slice(0, 400));
       } else if (m.type === 'unhandled-rejection') {
-        window.__p2007 && window.__p2007.logs.push('worker ' + proc.pid + ': UNHANDLED-REJECTION ' + String(m.reason).slice(0, 800));
+        DIAG && DIAG.logs.push('worker ' + proc.pid + ': UNHANDLED-REJECTION ' + String(m.reason).slice(0, 800));
       } else {
         // M1.7A diagnostics: carry the message where present (uncaught/
         // entry-error are useless without their text — pnpm-wasm debugging).
@@ -1219,7 +1224,7 @@ export class Supervisor {
         // — include them so install-loop diagnosis can see WHICH entry
         // re-bundles (the fields exist on the report; the old line dropped
         // them).
-        window.__p2007 && window.__p2007.logs.push('worker ' + proc.pid + ': ' + m.type +
+        DIAG && DIAG.logs.push('worker ' + proc.pid + ': ' + m.type +
           (m.message ? ' :: ' + String(m.message).slice(0, 600) : '') +
           (m.error ? ' :: ' + String(m.error).slice(0, 600) : '') +
           (m.entry ? ' :: entry=' + String(m.entry).slice(0, 300) : '') +
@@ -1307,7 +1312,7 @@ export class Supervisor {
       }
       return;
     }
-    window.__p2007 && window.__p2007.logs.push('channel ' + proc.pid + ': ' + (m.type || 'unknown'));
+    DIAG && DIAG.logs.push('channel ' + proc.pid + ': ' + (m.type || 'unknown'));
   }
 
   async handleSpawnRequest(proc, m) {
@@ -1564,7 +1569,7 @@ export class Supervisor {
     const prev = this._stdinChain || Promise.resolve();
     const run = prev.then(() => this.rpc({ type: 'stdin-feed', bytes }));
     this._stdinChain = run.then(() => {}, () => {});
-    try { await run; } catch (e) { window.__p2007 && window.__p2007.logs.push('stdin-feed: ' + e.message); }
+    try { await run; } catch (e) { DIAG && DIAG.logs.push('stdin-feed: ' + e.message); }
   }
 
   // -- status bar -------------------------------------------------------------------------
@@ -1575,7 +1580,7 @@ export class Supervisor {
   }
   showExit(code) {
     if (this.status.exit) this.status.exit.textContent = '↳ ' + code;
-    if (window.__p2007) window.__p2007.lastExit = code;
+    if (DIAG) DIAG.lastExit = code;
   }
 
   // -- shutdown ('exit' builtin) ------------------------------------------------------------
@@ -1594,7 +1599,7 @@ export class Supervisor {
     try { await this.rpc({ type: 'shutdown' }); } catch {}
     this.setKernel('stopped', 'runtime stopped');
     this.updateProcs();
-    window.__p2007 && (window.__p2007.exitCode = code, window.__p2007.stopped = true);
+    DIAG && (DIAG.exitCode = code, DIAG.stopped = true);
   }
 
   // -- B1-PREVIEW: the browser preview bridge ---------------------------------
