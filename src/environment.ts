@@ -1,8 +1,14 @@
 /**
- * Environment checks every embedding page must pass before the Nodine core
+ * Environment checks every embedding context must pass before the Nodine core
  * can boot. Mirrors the runtime's canonical execution profile (Chromium
  * desktop, HTTPS, cross-origin isolation, SharedArrayBuffer, WASM
- * threads/atomics, service workers — no fallback mode).
+ * threads/atomics — no fallback mode).
+ *
+ * Both browser pages AND Web Workers are supported: the runtime's kernel
+ * driver and process workers are Worker-based themselves, so a Worker
+ * embedding context (e.g. the VS Code web extension host) is fully capable.
+ * Only `previewUrl`'s service-worker proxy needs a page context; it degrades
+ * gracefully in Workers.
  */
 
 export interface EnvironmentCheck {
@@ -14,7 +20,16 @@ export interface EnvironmentCheck {
   ok: boolean;
 }
 
-const inBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
+const inWindow = typeof window !== 'undefined' && typeof document !== 'undefined';
+/** True inside any Web Worker (DedicatedWorker, SharedWorker, ServiceWorker). */
+const inWorker =
+  !inWindow &&
+  typeof self !== 'undefined' &&
+  typeof WorkerGlobalScope !== 'undefined' &&
+  typeof importScripts === 'function';
+
+/** The global scope that is guaranteed to exist in every supported context. */
+const g: typeof globalThis & { crossOriginIsolated?: boolean } = globalThis;
 
 /**
  * Runs all environment checks and returns them (passing and failing).
@@ -29,18 +44,18 @@ export function checkEnvironment(): EnvironmentCheck[] {
   const hasDocument = typeof document !== 'undefined';
   checks.push({
     id: 'browser-context',
-    ok: hasWindow && hasDocument,
+    ok: (hasWindow && hasDocument) || inWorker,
     message:
-      'Nodine boots inside a browser page (window/document are unavailable — are you running in Node?)',
+      'Nodine boots inside a browser page or Worker (window/document are unavailable — are you running in Node?)',
   });
 
-  if (!inBrowser) return checks;
+  if (!inWindow && !inWorker) return checks;
 
   checks.push({
     id: 'cross-origin-isolated',
-    ok: window.crossOriginIsolated === true,
+    ok: g.crossOriginIsolated === true,
     message:
-      'the page is not cross-origin isolated — serve COOP "same-origin" and COEP "require-corp" or "credentialless" headers from your application origin',
+      'the embedding context is not cross-origin isolated — serve COOP "same-origin" and COEP "require-corp" or "credentialless" headers from your application origin',
   });
 
   checks.push({
@@ -51,9 +66,11 @@ export function checkEnvironment(): EnvironmentCheck[] {
 
   checks.push({
     id: 'service-workers',
-    ok: 'serviceWorker' in navigator,
+    // Worker contexts have no navigator.serviceWorker; only previewUrl's
+    // service-worker proxy needs it, and it degrades gracefully there.
+    ok: inWorker || 'serviceWorker' in navigator,
     message:
-      'Service Workers are unavailable (requires a secure context: https or localhost)',
+      'Service Workers are unavailable (requires a page context and a secure context: https or localhost; previewUrl is unavailable in Workers)',
   });
 
   checks.push({

@@ -117,7 +117,40 @@ export class Container {
     }
     // runtimeUrl is optional: the default matches the URL served by the
     // Nodine Vite plugin (and produced by `npx nodine-stage public/nodine`).
-    const runtimeUrl = options.runtimeUrl == null ? DEFAULT_RUNTIME_URL : String(options.runtimeUrl);
+    const runtimeUrlRaw = options.runtimeUrl == null ? DEFAULT_RUNTIME_URL : String(options.runtimeUrl);
+
+    // Resolve the runtime URL to an absolute URL up front, so that (a) the
+    // dynamic import works from any context and (b) runtimeBase (used for
+    // sibling assets like sw-nodine.js) is exact. Pages resolve against
+    // document.baseURI; Workers against their own location. A Worker whose
+    // script is a blob: (e.g. the VS Code web extension host) cannot resolve
+    // a relative URL at all — require an absolute one in that case.
+    const resolveRuntimeUrl = (): URL => {
+      try {
+        return new URL(runtimeUrlRaw);
+      } catch {
+        // relative — resolve against the embedding context
+      }
+      const base =
+        typeof document !== 'undefined'
+          ? document.baseURI
+          : typeof self !== 'undefined' && self.location
+            ? self.location.href
+            : undefined;
+      if (!base) {
+        throw new BootFailedError(
+          `runtimeUrl "${runtimeUrlRaw}" is relative and this context (a blob: Worker) has no base URL — pass an absolute URL (e.g. https://host/nodine/supervisor.mjs)`,
+        );
+      }
+      try {
+        return new URL(runtimeUrlRaw, base);
+      } catch {
+        throw new BootFailedError(
+          `runtimeUrl "${runtimeUrlRaw}" cannot be resolved against ${base} — pass an absolute URL`,
+        );
+      }
+    };
+    const runtimeUrl = resolveRuntimeUrl();
 
     const term = new HeadlessTermSink();
     const statusEls = {
@@ -168,7 +201,9 @@ export class Container {
       // fall back to the runtime's demo workspace if the name is unusable
     }
 
-    const container = new Container(supervisor, term, workdirPath, new URL(runtimeUrl, document.baseURI));
+    // Resolve the runtime URL against the embedding context's base: pages
+    // have document.baseURI; Workers use their own location.
+    const container = new Container(supervisor, term, workdirPath, runtimeUrl);
     container.__sup = supervisor;
 
     if (options.enablePreview !== false) {

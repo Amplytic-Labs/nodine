@@ -1,7 +1,7 @@
 # Nodine
 
 <p align="center">
-  <img src="assets/Nodine-logo.svg" width="120" alt="Nodine logo" />
+  <img src="assets/Nodine-text-logo.svg" width="360" alt="Nodine" />
 </p>
 
 A **real Node.js runtime that runs entirely inside the browser tab** — no

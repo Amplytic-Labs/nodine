@@ -1599,7 +1599,7 @@ export class Supervisor {
     try { await this.rpc({ type: 'shutdown' }); } catch {}
     this.setKernel('stopped', 'runtime stopped');
     this.updateProcs();
-    DIAG && (DIAG.exitCode = code, DIAG.stopped = true);
+    if (DIAG) { DIAG.exitCode = code; DIAG.stopped = true; }
   }
 
   // -- B1-PREVIEW: the browser preview bridge ---------------------------------
