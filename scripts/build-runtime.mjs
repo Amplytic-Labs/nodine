@@ -47,6 +47,8 @@ const COREUTILS_SRC = path.join(VENDOR, 'coreutils/coreutils.js');
 // Short cache names, mirroring the p2-007 server's unpack layout.
 const TGZ_MAP = [
   ['npm-12.2.2.tgz', 'npm'],
+  ['pnpm-9.15.9.tgz', 'pnpm'],
+  ['yarn-1.22.22.tgz', 'yarn'],
   ['yarnpkg-shell-4.1.3.tgz', 'shell'],
   ['pako-2.1.0.tgz', 'pako'],
   ['noble-hashes-1.8.0.tgz', 'noble'],
@@ -203,9 +205,9 @@ function copyTree(srcDir, dstDir, transform) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. npm seed — manifest + CSB1 blob. /usr tree (npm, shell, pako, noble),
-//    exec stubs (/usr/bin/node, /bin/sh), coreutils as REAL /usr/bin
-//    programs, and a small neutral demo workspace under /home/user.
+// 4. npm seed — manifest + CSB1 blob. /usr tree (npm, pnpm, yarn, shell,
+//    pako, noble), exec stubs (/usr/bin/node, /bin/sh), coreutils as REAL
+//    /usr/bin programs, and a small neutral demo workspace under /home/user.
 // ---------------------------------------------------------------------------
 function buildSeed() {
   const NODE_STUB = '#!/usr/bin/env node\n';
@@ -227,6 +229,8 @@ function buildSeed() {
   const files = [];
   for (const [dir, vroot] of [
     ['npm', '/usr/lib/node_modules/npm'],
+    ['pnpm', '/usr/lib/node_modules/pnpm'],
+    ['yarn', '/usr/lib/node_modules/yarn'],
     ['shell', '/usr/lib/node_modules/shell'],
     ['pako', '/usr/lib/node_modules/pako'],
     ['noble', '/usr/lib/node_modules/@noble/hashes'],
@@ -245,6 +249,10 @@ function buildSeed() {
   files.push(
     { path: '/usr/bin/npm', size: 0, mode: 0o777, type: 'symlink', target: '../lib/node_modules/npm/bin/npm-cli.js' },
     { path: '/usr/bin/npx', size: 0, mode: 0o777, type: 'symlink', target: '../lib/node_modules/npm/bin/npx-cli.js' },
+    { path: '/usr/bin/pnpm', size: 0, mode: 0o777, type: 'symlink', target: '../lib/node_modules/pnpm/bin/pnpm.cjs' },
+    { path: '/usr/bin/pnpx', size: 0, mode: 0o777, type: 'symlink', target: '../lib/node_modules/pnpm/bin/pnpx.cjs' },
+    { path: '/usr/bin/yarn', size: 0, mode: 0o777, type: 'symlink', target: '../lib/node_modules/yarn/bin/yarn.js' },
+    { path: '/usr/bin/yarnpkg', size: 0, mode: 0o777, type: 'symlink', target: '../lib/node_modules/yarn/bin/yarn.js' },
     { path: '/usr/bin/node', size: Buffer.byteLength(NODE_STUB), mode: 0o755, type: 'file', stub: 'node' },
     { path: '/bin/sh', size: Buffer.byteLength(SH_STUB), mode: 0o755, type: 'file', stub: 'sh' },
     { path: '/home/user', size: 0, mode: 0o755, type: 'dir' },
